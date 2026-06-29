@@ -34,6 +34,8 @@ const state = {
   page: 1,
   pageSize: 50,
   activePage: 'overview',
+  sortBy: 'date',
+  sortDir: 'desc',
 };
 
 const AUTH_KEY = 'kehale_auth';
@@ -53,6 +55,7 @@ async function loadData() {
   document.getElementById('meta-subtitle').textContent =
     `${DATA.meta.municipality} · ${DATA.meta.receipt_count?.toLocaleString()} receipts`;
   initFilters();
+  initPaymentTableSort();
   document.getElementById('loading').classList.add('hidden');
   document.getElementById('app').classList.remove('hidden');
   renderAll();
@@ -234,6 +237,73 @@ function filterPaymentsList(list) {
   });
 }
 
+const PAYMENT_SORT_COLS = [
+  { key: 'date', label: 'Date', numeric: false, defaultDir: 'desc' },
+  { key: 'receipt_number', label: 'Receipt #', numeric: true, defaultDir: 'desc' },
+  { key: 'taxpayer', label: 'Taxpayer', numeric: false, defaultDir: 'asc' },
+  { key: 'category', label: 'Category', numeric: false, defaultDir: 'asc' },
+  { key: 'group', label: 'Group', numeric: false, defaultDir: 'asc' },
+  { key: 'amount', label: 'Amount', numeric: true, defaultDir: 'desc' },
+  { key: 'budget_year', label: 'Year', numeric: true, defaultDir: 'desc' },
+];
+
+function paymentSortValue(p, key) {
+  const u = state.usd;
+  switch (key) {
+    case 'date': return p.date || '';
+    case 'receipt_number': return Number(p.receipt_number) || 0;
+    case 'taxpayer': return (p.taxpayer || '').toLowerCase();
+    case 'category': return (p.primary_category || '').toLowerCase();
+    case 'group': return ((p.category_groups || [])[0] || '').toLowerCase();
+    case 'amount': return u ? (p.amount_usd || 0) : (p.amount_lbp || 0);
+    case 'budget_year': return Number(p.budget_year) || 0;
+    default: return '';
+  }
+}
+
+function sortPaymentsList(list) {
+  const col = PAYMENT_SORT_COLS.find((c) => c.key === state.sortBy);
+  if (!col) return list;
+  const mul = state.sortDir === 'asc' ? 1 : -1;
+  return [...list].sort((a, b) => {
+    const va = paymentSortValue(a, col.key);
+    const vb = paymentSortValue(b, col.key);
+    if (col.numeric) return (va - vb) * mul;
+    return String(va).localeCompare(String(vb), undefined, { sensitivity: 'base' }) * mul;
+  });
+}
+
+function initPaymentTableSort() {
+  const thead = document.querySelector('#payments-table thead');
+  if (!thead || thead.dataset.sortInit) return;
+  thead.dataset.sortInit = '1';
+  thead.addEventListener('click', (e) => {
+    const th = e.target.closest('th[data-sort]');
+    if (!th) return;
+    const key = th.dataset.sort;
+    if (state.sortBy === key) {
+      state.sortDir = state.sortDir === 'asc' ? 'desc' : 'asc';
+    } else {
+      state.sortBy = key;
+      const col = PAYMENT_SORT_COLS.find((c) => c.key === key);
+      state.sortDir = col?.defaultDir || 'asc';
+    }
+    state.page = 1;
+    renderTracker();
+  });
+}
+
+function renderPaymentTableHeaders() {
+  const row = document.querySelector('#payments-table thead tr');
+  if (!row) return;
+  row.innerHTML = PAYMENT_SORT_COLS.map((c) => {
+    const active = state.sortBy === c.key;
+    const arrow = active ? (state.sortDir === 'asc' ? '▲' : '▼') : '⇅';
+    const cls = `sortable${c.key === 'amount' ? ' num' : ''}${active ? ' active' : ''}`;
+    return `<th class="${cls}" data-sort="${c.key}" title="Sort by ${c.label}"><span>${c.label}</span><span class="sort-icon">${arrow}</span></th>`;
+  }).join('') + '<th class="col-actions"></th>';
+}
+
 function filterCategories(rows) {
   let r = rows;
   if (state.year !== 'all') r = r.filter((x) => x.year === Number(state.year));
@@ -375,7 +445,9 @@ function badge(g) {
 }
 
 function renderTracker() {
-  const filtered = filterPaymentsList(PAYMENTS);
+  if (!PAYMENTS) return;
+  renderPaymentTableHeaders();
+  const filtered = sortPaymentsList(filterPaymentsList(PAYMENTS));
   const u = state.usd;
   const total = filtered.reduce((s, p) => s + (u ? p.amount_usd : p.amount_lbp), 0);
   const pages = Math.max(1, Math.ceil(filtered.length / state.pageSize));
@@ -406,7 +478,10 @@ function renderTracker() {
   }).join('') || '<tr><td colspan="8" style="text-align:center;padding:32px;color:var(--muted)">No payments match filters</td></tr>';
 
   tbody.querySelectorAll('tr[data-idx]').forEach((tr) => {
-    tr.addEventListener('click', () => openPaymentDetail(filtered[Number(tr.dataset.idx)]));
+    tr.addEventListener('click', (e) => {
+      if (e.target.closest('button')) return;
+      openPaymentDetail(filtered[Number(tr.dataset.idx)]);
+    });
   });
 
   renderPager('pager-top', pages, filtered.length);

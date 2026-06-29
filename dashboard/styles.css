@@ -231,6 +231,16 @@ body {
   text-transform: uppercase; letter-spacing: .04em;
   padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--border);
 }
+.data-table th.sortable {
+  cursor: pointer; user-select: none; white-space: nowrap;
+  transition: background .15s, color .15s;
+}
+.data-table th.sortable:hover { background: #dce8ff; color: var(--blue); }
+.data-table th.sortable.active { background: #dce8ff; color: var(--blue); }
+.data-table th.sortable span:first-child { margin-right: 6px; }
+.sort-icon { font-size: .65rem; opacity: .45; }
+.data-table th.sortable.active .sort-icon { opacity: 1; color: var(--blue); }
+.data-table th.col-actions { cursor: default; width: 72px; }
 .data-table td { padding: 10px 12px; border-bottom: 1px solid var(--border); vertical-align: middle; }
 .data-table tbody tr { cursor: pointer; transition: background .1s; }
 .data-table tbody tr:hover td { background: var(--blue-light); }
