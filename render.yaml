@@ -1,0 +1,20 @@
+# Kehale — Render static site deploy
+# https://render.com/docs/static-sites
+
+services:
+  - type: web
+    name: kehale-dashboard
+    runtime: static
+    buildCommand: echo "Static dashboard — no build required"
+    staticPublishPath: ./dashboard
+    headers:
+      - path: /*
+        name: Cache-Control
+        value: public, max-age=300
+      - path: /data/*
+        name: Cache-Control
+        value: public, max-age=60
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html

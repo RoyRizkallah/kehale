@@ -1,0 +1,93 @@
+# Kehale — full stack in Docker (Oracle + import + analytics + dashboard)
+#
+# First run (import can take 20–40 min):
+#   docker compose up -d --build
+#
+# Dashboard:  http://localhost:8080
+# Oracle:     localhost:1521/XE  (system / Kehale2026!)
+#
+# Re-run analysis after import:
+#   docker compose exec analytics /app/docker/entrypoint.sh
+#
+# Reset everything (deletes Oracle data volume):
+#   docker compose down -v
+
+services:
+  oracle:
+    image: gvenzl/oracle-xe:21-slim-faststart
+    container_name: kehale-oracle
+    ports:
+      - "1521:1521"
+    environment:
+      ORACLE_PASSWORD: Kehale2026!
+    volumes:
+      - oracle_data:/opt/oracle/oradata
+      - ./MONDAY_165.DMP:/dump/MONDAY_165.DMP:ro
+    healthcheck:
+      test: ["CMD", "healthcheck.sh"]
+      interval: 30s
+      timeout: 10s
+      retries: 15
+      start_period: 180s
+    restart: unless-stopped
+
+  oracle-import:
+    image: gvenzl/oracle-xe:21-slim-faststart
+    container_name: kehale-oracle-import
+    depends_on:
+      oracle:
+        condition: service_healthy
+    environment:
+      ORACLE_HOST: oracle
+      ORACLE_PASSWORD: Kehale2026!
+      ORACLE_IMPORT_MARKER: /data/.oracle_import_done
+      DUMP_FILE: /dump/MONDAY_165.DMP
+    volumes:
+      - kehale_data:/data
+      - ./MONDAY_165.DMP:/dump/MONDAY_165.DMP:ro
+      - ./docker/import-remote.sh:/app/docker/import-remote.sh:ro
+    entrypoint: ["/bin/bash", "/app/docker/import-remote.sh"]
+    restart: "no"
+
+  analytics:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: kehale-analytics
+    depends_on:
+      oracle:
+        condition: service_healthy
+      oracle-import:
+        condition: service_started
+    environment:
+      ORACLE_ENABLED: "true"
+      ORACLE_USER: system
+      ORACLE_PASSWORD: Kehale2026!
+      ORACLE_DSN: oracle:1521/XE
+      ORACLE_HOST: oracle
+      ORACLE_IMPORT_MARKER: /data/.oracle_import_done
+      WAIT_FOR_IMPORT: "true"
+      KEEP_ALIVE: "true"
+    volumes:
+      - kehale_data:/data
+      - ./data:/app/data
+      - ./municipal_analysis:/app/municipal_analysis
+      - ./output:/app/output
+      - ./dashboard:/app/dashboard
+    restart: unless-stopped
+
+  dashboard:
+    image: nginx:alpine
+    container_name: kehale-dashboard
+    ports:
+      - "8080:80"
+    volumes:
+      - ./dashboard:/usr/share/nginx/html:ro
+      - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - analytics
+    restart: unless-stopped
+
+volumes:
+  oracle_data:
+  kehale_data:

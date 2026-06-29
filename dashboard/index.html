@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Kehale · Municipal Revenue Monitor</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <!-- Password gate -->
+  <div class="auth-gate" id="auth-gate">
+    <div class="auth-card">
+      <div class="logo auth-logo">K</div>
+      <h2>Kehale Revenue Monitor</h2>
+      <p class="auth-sub">Enter password to access municipal revenue data</p>
+      <form id="auth-form">
+        <input type="password" id="auth-password" placeholder="Password" autocomplete="current-password" required />
+        <p class="auth-error hidden" id="auth-error">Incorrect password. Try again.</p>
+        <button type="submit" class="auth-submit">Sign in</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="loading hidden" id="loading">
+    <div class="spinner"></div>
+    <div>Loading revenue data…</div>
+  </div>
+
+  <div class="app hidden" id="app">
+    <header class="header">
+      <div class="header-brand">
+        <div class="logo">K</div>
+        <div>
+          <h1>Kehale Revenue Monitor</h1>
+          <p id="meta-subtitle">Al-Kahaleh · Site 165</p>
+        </div>
+      </div>
+      <nav class="header-nav" id="main-nav">
+        <button class="nav-btn nav-toggle" id="nav-toggle" type="button" aria-label="Menu">☰</button>
+        <div class="nav-links" id="nav-links">
+        <button class="nav-btn active" data-page="overview">Overview</button>
+        <button class="nav-btn" data-page="tracker">Payment Tracker</button>
+        <button class="nav-btn" data-page="categories">Categories</button>
+        <button class="nav-btn" data-page="receivables">Receivables</button>
+        <button class="nav-btn" data-page="rates">Exchange Rates</button>
+        </div>
+      </nav>
+    </header>
+
+    <section class="filter-bar">
+      <div class="filter-grid">
+        <div class="field">
+          <label>From date</label>
+          <input type="date" id="filter-date-from" />
+        </div>
+        <div class="field">
+          <label>To date</label>
+          <input type="date" id="filter-date-to" />
+        </div>
+        <div class="field">
+          <label>Fiscal year</label>
+          <select id="filter-year"><option value="all">All years</option></select>
+        </div>
+        <div class="field">
+          <label>Category group</label>
+          <select id="filter-group"><option value="all">All groups</option></select>
+        </div>
+        <div class="field field-grow">
+          <label>Search</label>
+          <input type="search" id="filter-search" placeholder="Receipt #, taxpayer name…" />
+        </div>
+        <div class="field field-actions">
+          <label>Currency</label>
+          <button class="btn-toggle active" id="btn-usd" type="button">USD</button>
+        </div>
+        <div class="field field-actions">
+          <label>&nbsp;</label>
+          <button class="btn-secondary" id="btn-reset" type="button">Reset filters</button>
+        </div>
+      </div>
+      <div class="filter-summary" id="filter-summary"></div>
+    </section>
+
+    <main class="content">
+      <!-- OVERVIEW -->
+      <section class="page active" id="page-overview">
+        <div class="kpi-row" id="kpis"></div>
+        <div class="grid-2">
+          <div class="card"><h3>Receivables vs Payments by Year</h3><div id="chart-yearly" class="chart"></div></div>
+          <div class="card"><h3>Collection Rate</h3><div id="chart-collection" class="chart"></div></div>
+        </div>
+        <div class="card"><h3>Daily Collections (filtered period)</h3><div id="chart-daily" class="chart"></div></div>
+      </section>
+
+      <!-- PAYMENT TRACKER -->
+      <section class="page" id="page-tracker">
+        <div class="kpi-row compact" id="tracker-kpis"></div>
+        <div class="card">
+          <div class="card-head">
+            <h3>All Payments <span class="muted" id="tracker-count"></span></h3>
+            <div class="pager" id="pager-top"></div>
+          </div>
+          <div class="table-scroll">
+            <table class="data-table" id="payments-table">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Receipt #</th>
+                  <th>Taxpayer</th>
+                  <th>Category</th>
+                  <th>Group</th>
+                  <th class="num">Amount</th>
+                  <th>Year</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+          <div class="pager" id="pager-bottom"></div>
+        </div>
+      </section>
+
+      <!-- CATEGORIES -->
+      <section class="page" id="page-categories">
+        <div class="grid-2 grid-categories">
+          <div class="card card-map"><h3>Category Map</h3><div id="chart-treemap" class="chart tall map-chart"></div></div>
+          <div class="card">
+            <h3>Category Breakdown</h3>
+            <div class="table-scroll"><table class="data-table" id="table-categories">
+              <thead><tr><th>ID</th><th>Category</th><th>Group</th><th class="num">Amount</th><th class="num">Lines</th></tr></thead>
+              <tbody></tbody>
+            </table></div>
+          </div>
+        </div>
+        <div class="card"><h3>Collections by Group</h3><div id="chart-group-bar" class="chart"></div></div>
+      </section>
+
+      <!-- RECEIVABLES -->
+      <section class="page" id="page-receivables">
+        <div class="grid-2">
+          <div class="card"><h3>Receivables by Category</h3><div id="chart-recv-bar" class="chart tall"></div></div>
+          <div class="card"><h3>Receivables vs Collections Gap</h3><div id="chart-gap" class="chart tall"></div></div>
+        </div>
+      </section>
+
+      <!-- RATES -->
+      <section class="page" id="page-rates">
+        <div class="card"><h3>LBP → USD by Fiscal Year</h3><div id="chart-rates" class="chart"></div></div>
+        <div class="card"><div class="table-scroll"><table class="data-table" id="table-rates">
+          <thead><tr><th>Year</th><th class="num">LBP / USD</th><th class="num">USD / LBP</th><th>Source</th></tr></thead>
+          <tbody></tbody>
+        </table></div></div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Payment detail drawer -->
+  <div class="drawer-backdrop hidden" id="drawer-backdrop"></div>
+  <aside class="drawer hidden" id="drawer">
+    <div class="drawer-head">
+      <h2>Payment Detail</h2>
+      <button class="btn-icon" id="drawer-close" type="button" aria-label="Close">✕</button>
+    </div>
+    <div class="drawer-body" id="drawer-body"></div>
+  </aside>
+
+  <script src="app.js"></script>
+</body>
+</html>

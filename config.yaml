@@ -1,0 +1,52 @@
+# Kehale municipal analytics — defaults work for Docker and local runs
+
+dump:
+  path: MONDAY_165.DMP
+  site_id: 165
+
+analysis:
+  municipality_name: "Al-Kahaleh (Site 165)"
+
+database:
+  sqlite_path: data/kehale.db
+  oracle:
+    enabled: false
+    # Docker overrides these via environment variables
+    user: RUSUM
+    password: rusum
+    dsn: localhost:1521/XE
+
+exchange_rates:
+  source_priority:
+    - database
+    - config
+    - bdl_official
+  bdl_official:
+    2000: 1507.5
+    2001: 1507.5
+    2002: 1507.5
+    2003: 1507.5
+    2004: 1507.5
+    2005: 1507.5
+    2006: 1507.5
+    2007: 1507.5
+    2008: 1507.5
+    2009: 1507.5
+    2010: 1507.5
+    2011: 1507.5
+    2012: 1507.5
+    2013: 1507.5
+    2014: 1507.5
+    2015: 1507.5
+    2016: 1507.5
+    2017: 1507.5
+    2018: 1507.5
+    2019: 1507.5
+    2020: 1507.5
+    2021: 1507.5
+    2022: 1507.5
+    2023: 89500.0
+    2024: 89500.0
+    2025: 89500.0
+    2026: 89500.0
+  overrides: {}

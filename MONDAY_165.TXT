@@ -1,0 +1,90 @@
+
+Backup for:                                                                                                             
+------------------------------------------------------------------------------------------------------------------------
+SITE ID:  165                                                                                                           
+SITE NAME:«·ﬂÕ«·Â                                                                                                       
+                                                                                                                        
+
+
+
+
+
+
+
+Applications:                                                                                                           
+------------------------------------------------------------------------------------------------------------------------
+APPL CODE: D2KHELP                                                                                                      
+APPL NAME: Help System                                                                                                  
+APPL OWNER:D2KHELP                                                                                                      
+VERSION:                                                                                                                
+PATCHSET:                                                                                                               
+                                                                                                                        
+APPL CODE: COM                                                                                                          
+APPL NAME: Common application for financial Application                                                                 
+APPL OWNER:COMAPP                                                                                                       
+VERSION:   1.4                                                                                                          
+PATCHSET:  20140415                                                                                                     
+                                                                                                                        
+APPL CODE: RUSUMTFR                                                                                                     
+APPL NAME: Owner of MRS Transfer Tables                                                                                 
+APPL OWNER:RUSUMTFR                                                                                                     
+VERSION:                                                                                                                
+PATCHSET:                                                                                                               
+                                                                                                                        
+APPL CODE: IDEASDELN                                                                                                    
+APPL NAME: Delivery Notice System                                                                                       
+APPL OWNER:IDEASDELN                                                                                                    
+VERSION:   1.0.0                                                                                                        
+PATCHSET:  20131231                                                                                                     
+                                                                                                                        
+APPL CODE: IDEASPM                                                                                                      
+APPL NAME: Permits System                                                                                               
+APPL OWNER:IDEASPM                                                                                                      
+VERSION:   1.0.0                                                                                                        
+PATCHSET:  20140415                                                                                                     
+                                                                                                                        
+APPL CODE: RUSUMTMP                                                                                                     
+APPL NAME: Owner of MRS Temporary Transfer Tables                                                                       
+APPL OWNER:RUSUMTMP                                                                                                     
+VERSION:                                                                                                                
+PATCHSET:                                                                                                               
+                                                                                                                        
+APPL CODE: MBSA                                                                                                         
+APPL NAME: Municipal Budget System for small municipalities                                                             
+APPL OWNER:MBSSMALL                                                                                                     
+VERSION:   4.1.3                                                                                                        
+PATCHSET:  20251220                                                                                                     
+                                                                                                                        
+APPL CODE: IDEASLIC                                                                                                     
+APPL NAME: IDEAS Licensing Application                                                                                  
+APPL OWNER:IDEASLIC                                                                                                     
+VERSION:   1.0                                                                                                          
+PATCHSET:  20140930                                                                                                     
+                                                                                                                        
+APPL CODE: MRSB                                                                                                         
+APPL NAME: Municipal revenue System for large municipalities                                                            
+APPL OWNER:RUSUM                                                                                                        
+VERSION:   4.1.5                                                                                                        
+PATCHSET:  202512200                                                                                                    
+                                                                                                                        
+APPL CODE: RUSUMTEMP                                                                                                    
+APPL NAME: Owner of MRS Temporary Tables                                                                                
+APPL OWNER:RUSUMTEMP                                                                                                    
+VERSION:                                                                                                                
+PATCHSET:                                                                                                               
+                                                                                                                        
+APPL CODE: MAS                                                                                                          
+APPL NAME: Municipal Accounting System                                                                                  
+APPL OWNER:MAS                                                                                                          
+VERSION:                                                                                                                
+PATCHSET:                                                                                                               
+                                                                                                                        
+APPL CODE: RUSUMLOG                                                                                                     
+APPL NAME: Owner of MRS Log Tables                                                                                      
+APPL OWNER:RUSUMLOG                                                                                                     
+VERSION:                                                                                                                
+PATCHSET:                                                                                                               
+                                                                                                                        
+
+ „ «Œ Ì«— 12 ’›
+

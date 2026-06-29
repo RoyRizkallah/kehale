@@ -1,0 +1,34 @@
+# Oracle dump — too large for GitHub (download separately)
+MONDAY_165.DMP
+MONDAY_165.LOG
+*.DMP
+
+# Oracle local data
+data/oracle/
+data/kehale.db
+data/kehale.db-journal
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+*.swp
+
+# Env secrets
+.env
+.env.*
+
+# Docker volumes (local)
+.docker/
+
+# Large generated outputs (optional — keep dashboard data in repo for Render)
+# dashboard/data/payments.json

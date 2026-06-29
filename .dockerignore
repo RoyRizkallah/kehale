@@ -1,0 +1,16 @@
+# Docker build artifacts
+data/oracle/
+*.db-journal
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Output (regenerated in container)
+# output/ — keep for convenience
+
+# OS
+.DS_Store
+Thumbs.db
