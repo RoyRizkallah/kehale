@@ -221,6 +221,7 @@ def build_dashboard_payload(data_dir: Path | None = None) -> dict[str, Any]:
     )
 
     payment_ledger = _build_payment_ledger(receipts, trans, data["pay_trans"], fees, rates_df)
+    receivable_ledger = _build_receivable_ledger(trans, data["pay_trans"], fees, rates_df)
 
     date_min = receipts["RECEIPT_DATE"].min()
     date_max = receipts["RECEIPT_DATE"].max()
@@ -244,6 +245,7 @@ def build_dashboard_payload(data_dir: Path | None = None) -> dict[str, Any]:
         "monthly_payments": monthly.round(2).to_dict(orient="records"),
         "fee_types": fees.fillna("").to_dict(orient="records"),
         "payment_ledger": payment_ledger,
+        "receivable_ledger": receivable_ledger,
     }
 
 
@@ -344,4 +346,91 @@ def _build_payment_ledger(
         })
 
     ledger.sort(key=lambda x: (x["date"] or "", x["receipt_id"]), reverse=True)
+    return ledger
+
+
+def _build_receivable_ledger(
+    trans: pd.DataFrame,
+    pay_trans: pd.DataFrame,
+    fees: pd.DataFrame,
+    rates_df: pd.DataFrame,
+) -> list[dict[str, Any]]:
+    """One record per pay transaction with CREDIT (charge) lines for dashboard drill-down."""
+    pt_cols = [
+        "PAY_TRANS_ID", "BUDGET_YEAR", "TRANSACTION_DATE", "MUKALLAF_NAME", "MUKALLAF_ID",
+        "DOCUMENT_NUM1", "DOCUMENT_NUM2", "DOCUMENT_NUM3", "USER_ID",
+    ]
+    pt = pay_trans[[c for c in pt_cols if c in pay_trans.columns]].drop_duplicates("PAY_TRANS_ID")
+    pt = pt.copy()
+    pt["TRANSACTION_DATE"] = pd.to_datetime(pt["TRANSACTION_DATE"], errors="coerce")
+
+    fee_lu = fees.set_index("FEE_TYPE_ID")
+    rate_lu = rates_df.set_index("year")["lbp_per_usd"]
+
+    credit = trans[trans["ACCOUNT_TYPE"] == "CREDIT"]
+    lines_by_pt: dict[int, list[dict[str, Any]]] = {}
+    for _, row in credit.iterrows():
+        pid = int(row["PAY_TRANS_ID"]) if pd.notna(row["PAY_TRANS_ID"]) else None
+        if pid is None:
+            continue
+        fid = row.get("FEE_TYPE_ID")
+        fee_name = ""
+        fee_short = ""
+        group = "Other"
+        if pd.notna(fid) and int(fid) in fee_lu.index:
+            f = fee_lu.loc[int(fid)]
+            fee_name = str(f.get("FEE_TYPE_NAME") or "")
+            fee_short = str(f.get("FEE_TYPE_SHORTNAME") or "")
+            group = FEETP_LABELS.get(int(f.get("FEETP", 3)), "Other")
+        yr = int(row["BUDGET_YEAR"]) if pd.notna(row.get("BUDGET_YEAR")) else None
+        rate = float(rate_lu.get(yr, 1507.5)) if yr else 1507.5
+        amt = float(row["AMOUNT"] or 0)
+        lines_by_pt.setdefault(pid, []).append({
+            "seq": int(row["TRANSACTION_SEQ"]) if pd.notna(row.get("TRANSACTION_SEQ")) else None,
+            "account_type": "CREDIT",
+            "amount_lbp": round(amt, 2),
+            "amount_usd": round(amt / rate, 2),
+            "fee_type_id": int(fid) if pd.notna(fid) else None,
+            "fee_name": fee_name,
+            "fee_short": fee_short,
+            "category_group": group,
+            "description": str(row.get("TRANSACTION_DESC") or "")[:120],
+        })
+
+    pt_lu = pt.set_index("PAY_TRANS_ID")
+    ledger: list[dict[str, Any]] = []
+    for pid, lines in lines_by_pt.items():
+        if pid not in pt_lu.index:
+            continue
+        r = pt_lu.loc[pid]
+        if isinstance(r, pd.DataFrame):
+            r = r.iloc[0]
+        yr = int(r["BUDGET_YEAR"]) if pd.notna(r.get("BUDGET_YEAR")) else None
+        rate = float(rate_lu.get(yr, 1507.5)) if yr else 1507.5
+        total_lbp = sum(l["amount_lbp"] for l in lines)
+        groups = sorted({l["category_group"] for l in lines if l["category_group"]})
+        top_cat = ""
+        if lines:
+            top = max(lines, key=lambda x: x["amount_lbp"])
+            top_cat = top.get("fee_short") or top.get("fee_name") or ""
+        tx_date = r.get("TRANSACTION_DATE")
+        date_str = tx_date.strftime("%Y-%m-%d") if pd.notna(tx_date) else None
+
+        ledger.append({
+            "pay_trans_id": pid,
+            "date": date_str,
+            "budget_year": yr,
+            "amount_lbp": round(total_lbp, 2),
+            "amount_usd": round(total_lbp / rate, 2),
+            "taxpayer": str(r.get("MUKALLAF_NAME") or "").strip(),
+            "mukallaf_id": int(r["MUKALLAF_ID"]) if pd.notna(r.get("MUKALLAF_ID")) else None,
+            "document_num": int(r["DOCUMENT_NUM1"]) if pd.notna(r.get("DOCUMENT_NUM1")) else None,
+            "user_id": str(r.get("USER_ID") or ""),
+            "category_groups": groups,
+            "primary_category": top_cat,
+            "line_count": len(lines),
+            "lines": lines,
+        })
+
+    ledger.sort(key=lambda x: (x["date"] or "", x["pay_trans_id"]), reverse=True)
     return ledger

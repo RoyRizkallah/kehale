@@ -13,6 +13,7 @@ from kehale_analytics.payments import build_dashboard_payload
 OUT_DIR = Path(__file__).resolve().parent.parent / "dashboard" / "data"
 OUT = OUT_DIR / "kehale.json"
 OUT_PAYMENTS = OUT_DIR / "payments.json"
+OUT_RECEIVABLES = OUT_DIR / "receivables.json"
 
 
 def _sanitize(obj):
@@ -31,6 +32,7 @@ def _sanitize(obj):
 def main() -> None:
     payload = _sanitize(build_dashboard_payload())
     ledger = payload.pop("payment_ledger", [])
+    receivables = payload.pop("receivable_ledger", [])
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     OUT.write_text(
         json.dumps(payload, ensure_ascii=False, indent=2, allow_nan=False),
@@ -40,8 +42,13 @@ def main() -> None:
         json.dumps(_sanitize(ledger), ensure_ascii=False, separators=(",", ":"), allow_nan=False),
         encoding="utf-8",
     )
+    OUT_RECEIVABLES.write_text(
+        json.dumps(_sanitize(receivables), ensure_ascii=False, separators=(",", ":"), allow_nan=False),
+        encoding="utf-8",
+    )
     print(f"Wrote {OUT} ({OUT.stat().st_size / 1024:.0f} KB)")
     print(f"Wrote {OUT_PAYMENTS} ({OUT_PAYMENTS.stat().st_size / 1024:.0f} KB, {len(ledger):,} payments)")
+    print(f"Wrote {OUT_RECEIVABLES} ({OUT_RECEIVABLES.stat().st_size / 1024:.0f} KB, {len(receivables):,} charges)")
 
 
 if __name__ == "__main__":

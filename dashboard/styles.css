@@ -185,7 +185,8 @@ body {
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
 .grid-categories { align-items: stretch; }
 .card-map { min-height: 520px; display: flex; flex-direction: column; }
-.map-chart { flex: 1; min-height: 460px !important; width: 100% !important; }
+.map-chart { flex: 1; min-height: 460px !important; width: 100% !important; height: 460px !important; }
+#chart-treemap { min-height: 460px; height: 460px; width: 100%; }
 
 .chart { width: 100%; min-height: 320px; }
 .chart.tall { min-height: 440px; }
@@ -242,8 +243,7 @@ body {
 .data-table th.sortable.active .sort-icon { opacity: 1; color: var(--blue); }
 .data-table th.col-actions { cursor: default; width: 72px; }
 .data-table td { padding: 10px 12px; border-bottom: 1px solid var(--border); vertical-align: middle; }
-.data-table tbody tr { cursor: pointer; transition: background .1s; }
-.data-table tbody tr:hover td { background: var(--blue-light); }
+.data-table tbody tr { cursor: default; }
 .data-table td.num { font-family: 'IBM Plex Mono', monospace; text-align: right; font-weight: 500; }
 .badge {
   display: inline-block; padding: 2px 8px; border-radius: 20px;
@@ -279,10 +279,22 @@ body {
   transform: translateX(0); transition: transform .25s ease;
 }
 .drawer-head {
-  display: flex; justify-content: space-between; align-items: center;
+  display: flex; align-items: center; gap: 10px;
   padding: 20px 24px; border-bottom: 1px solid var(--border);
 }
-.drawer-head h2 { font-size: 1.1rem; }
+.drawer-head h2 { flex: 1; font-size: 1.1rem; margin: 0; }
+.drawer-filters {
+  display: flex; gap: 10px; flex-wrap: wrap;
+  margin-bottom: 16px; padding-bottom: 14px; border-bottom: 1px solid var(--border);
+}
+.drawer-filters .drawer-search,
+.drawer-filters .drawer-year {
+  flex: 1; min-width: 140px;
+  padding: 8px 12px; border: 1px solid var(--border);
+  border-radius: 8px; font-size: .85rem; font-family: inherit;
+}
+.drawer-filters .drawer-year { flex: 0 0 140px; }
+.lines-table tbody tr { cursor: default; }
 .btn-icon {
   border: none; background: var(--bg); width: 32px; height: 32px;
   border-radius: 8px; cursor: pointer; font-size: 1rem; color: var(--muted);

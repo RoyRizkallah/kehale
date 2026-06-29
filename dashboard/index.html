@@ -43,6 +43,7 @@
         <div class="nav-links" id="nav-links">
         <button class="nav-btn active" data-page="overview">Overview</button>
         <button class="nav-btn" data-page="tracker">Payment Tracker</button>
+        <button class="nav-btn" data-page="recv-tracker">Receivables Tracker</button>
         <button class="nav-btn" data-page="categories">Categories</button>
         <button class="nav-btn" data-page="receivables">Receivables</button>
         <button class="nav-btn" data-page="rates">Exchange Rates</button>
@@ -90,7 +91,7 @@
         <div class="kpi-row" id="kpis"></div>
         <div class="grid-2">
           <div class="card"><h3>Receivables vs Payments by Year</h3><div id="chart-yearly" class="chart"></div></div>
-          <div class="card"><h3>Collection Rate</h3><p class="chart-hint">% of receivables actually collected as payments each year. Green ≥100%, amber 90–99%, red &lt;90%. Dashed line = 100% target.</p><div id="chart-collection" class="chart"></div></div>
+          <div class="card"><h3>Collection Rate</h3><p class="chart-hint">Share of billed receivables collected as payments each year. Green ≥100%, amber 90–99%, red &lt;90%. Values above 100% mean more was collected than billed that year (prior-year balances, fines, or timing). Dashed line = 100% target.</p><div id="chart-collection" class="chart"></div></div>
         </div>
         <div class="card"><h3>Daily Collections (filtered period)</h3><div id="chart-daily" class="chart"></div></div>
       </section>
@@ -115,22 +116,40 @@
         </div>
       </section>
 
+      <!-- RECEIVABLES TRACKER -->
+      <section class="page" id="page-recv-tracker">
+        <div class="kpi-row compact" id="recv-kpis"></div>
+        <div class="card">
+          <div class="card-head">
+            <h3>All Receivable Charges <span class="muted" id="recv-count"></span></h3>
+            <div class="pager" id="recv-pager-top"></div>
+          </div>
+          <div class="table-scroll">
+            <table class="data-table sortable-table" id="receivables-table">
+              <thead>
+                <tr><!-- headers rendered by app.js --></tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+          <div class="pager" id="recv-pager-bottom"></div>
+        </div>
+      </section>
+
       <!-- CATEGORIES -->
       <section class="page" id="page-categories">
-        <div class="grid-2 grid-categories">
-          <div class="card card-map"><h3>Category Map</h3><p class="chart-hint">Click a segment to zoom in. Size = receivable amount. Top 80 categories shown.</p><div id="chart-treemap" class="chart tall map-chart"></div></div>
-          <div class="card">
-            <h3>Category Breakdown</h3>
-            <div class="table-scroll"><table class="data-table" id="table-categories">
-              <thead><tr><th>ID</th><th>Category</th><th>Group</th><th class="num">Amount</th><th class="num">Lines</th></tr></thead>
-              <tbody></tbody>
-            </table></div>
-          </div>
+        <div class="card">
+          <h3>Category Breakdown</h3>
+          <p class="chart-hint">Use Details → on any row. In the drawer: filter years, then Payments → per year, then Receipt → for full payment.</p>
+          <div class="table-scroll"><table class="data-table" id="table-categories">
+            <thead><tr><th>ID</th><th>Category</th><th>Group</th><th class="num">Amount</th><th class="num">Lines</th><th class="col-actions"></th></tr></thead>
+            <tbody></tbody>
+          </table></div>
         </div>
         <div class="card"><h3>Collections by Group</h3><div id="chart-group-bar" class="chart"></div></div>
       </section>
 
-      <!-- RECEIVABLES -->
+      <!-- RECEIVABLES ANALYSIS -->
       <section class="page" id="page-receivables">
         <div class="grid-2">
           <div class="card"><h3>Receivables by Category</h3><div id="chart-recv-bar" class="chart tall"></div></div>
@@ -153,7 +172,8 @@
   <div class="drawer-backdrop hidden" id="drawer-backdrop"></div>
   <aside class="drawer hidden" id="drawer">
     <div class="drawer-head">
-      <h2>Payment Detail</h2>
+      <button class="btn-icon hidden" id="drawer-back" type="button" aria-label="Back">←</button>
+      <h2 id="drawer-title">Payment Detail</h2>
       <button class="btn-icon" id="drawer-close" type="button" aria-label="Close">✕</button>
     </div>
     <div class="drawer-body" id="drawer-body"></div>
