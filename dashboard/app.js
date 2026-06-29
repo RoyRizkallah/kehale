@@ -68,8 +68,14 @@ function wireDetailButtons(container, handler) {
 }
 
 async function loadData() {
+  const loadingText = document.querySelector('#loading div:last-child');
+  const paymentsPromise = ensurePayments();
+
   const res = await fetch('data/kehale.json');
   DATA = await res.json();
+  if (loadingText) loadingText.textContent = 'Loading payments…';
+  await paymentsPromise;
+
   document.getElementById('meta-subtitle').textContent =
     `${DATA.meta.municipality} · ${DATA.meta.receipt_count?.toLocaleString()} receipts`;
   initFilters();
@@ -78,7 +84,10 @@ async function loadData() {
   document.getElementById('loading').classList.add('hidden');
   document.getElementById('app').classList.remove('hidden');
   renderAll();
-  resizeVisibleCharts();
+  requestAnimationFrame(() => {
+    resizeVisibleCharts();
+    setTimeout(resizeVisibleCharts, 120);
+  });
 }
 
 function initAuth() {
@@ -469,10 +478,21 @@ function renderCollectionChart() {
 }
 
 function renderDailyChart() {
+  const el = document.getElementById('chart-daily');
+  if (!el) return;
+
   if (!PAYMENTS) {
-    plotly('chart-daily', [], {});
+    if (paymentsLoading) {
+      try { Plotly.purge(el); } catch (_) { /* noop */ }
+      el.innerHTML = '<p class="chart-empty">Loading daily collections…</p>';
+      return;
+    }
+    plotlyFresh('chart-daily', [], {});
     return;
   }
+
+  if (el.querySelector('.chart-empty')) el.textContent = '';
+
   const list = filterPaymentsList(PAYMENTS);
   const byDay = {};
   const u = state.usd;
@@ -481,9 +501,11 @@ function renderDailyChart() {
     byDay[p.date] = (byDay[p.date] || 0) + (u ? p.amount_usd : p.amount_lbp);
   });
   const days = Object.keys(byDay).sort();
-  plotly('chart-daily', [{
-    x: days, y: days.map((d) => byDay[d]),
-    type: 'bar', marker: { color: BLUE, opacity: 0.85 },
+  plotlyFresh('chart-daily', [{
+    x: days,
+    y: days.map((d) => byDay[d]),
+    type: 'bar',
+    marker: { color: BLUE, opacity: 0.85 },
   }], { xaxis: { title: 'Date' }, yaxis: { title: u ? 'USD' : 'LBP' } });
 }
 
