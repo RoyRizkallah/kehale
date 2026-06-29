@@ -33,6 +33,7 @@ const state = {
   usd: true,
   page: 1,
   pageSize: 50,
+  activePage: 'overview',
 };
 
 const AUTH_KEY = 'kehale_auth';
@@ -182,10 +183,26 @@ function initFilters() {
       btn.classList.add('active');
       document.getElementById('nav-links')?.classList.remove('open');
       const page = btn.dataset.page;
+      state.activePage = page;
       document.getElementById('page-' + page).classList.add('active');
       if (page === 'tracker') await ensurePayments();
       renderAll();
-      setTimeout(resizeVisibleCharts, 80);
+      if (page === 'categories') {
+        setTimeout(() => {
+          const cats = filterCategories(DATA.categories_by_year);
+          const agg = {};
+          cats.forEach((c) => {
+            const k = c.FEE_TYPE_ID;
+            if (!agg[k]) agg[k] = { ...c, amount: 0, lines: 0 };
+            agg[k].amount += state.usd ? c.amount_usd : c.amount_lbp;
+            agg[k].lines += c.line_count || 0;
+          });
+          const items = Object.values(agg).filter((x) => x.amount > 0).sort((a, b) => b.amount - a.amount);
+          renderCategoryMap(items);
+        }, 120);
+      } else {
+        setTimeout(resizeVisibleCharts, 80);
+      }
     });
   });
 
@@ -291,14 +308,46 @@ function renderYearlyChart() {
 
 function renderCollectionChart() {
   const ys = DATA.yearly_summary.sort((a, b) => a.year - b.year);
-  const rates = ys.map((r) => r.collection_rate);
-  const maxR = Math.max(100, ...rates.filter((v) => v != null), 110);
+  const rates = ys.map((r) => Number(r.collection_rate) || 0);
+  const ymax = Math.max(110, Math.ceil(Math.max(...rates, 100) / 10) * 10 + 10);
+  const colors = rates.map((r) => (r >= 100 ? '#0d9f6e' : r >= 90 ? '#d97706' : '#dc2626'));
+
   plotly('chart-collection', [{
-    x: ys.map((r) => r.year), y: rates,
-    type: 'scatter', mode: 'lines+markers', fill: 'tozeroy',
-    line: { color: BLUE, width: 2.5 }, marker: { size: 7, color: BLUE },
-    fillcolor: 'rgba(30,94,255,0.08)',
-  }], { yaxis: { title: '%', range: [0, Math.ceil(maxR / 10) * 10] } });
+    x: ys.map((r) => String(r.year)),
+    y: rates,
+    type: 'bar',
+    text: rates.map((r) => r.toFixed(1) + '%'),
+    textposition: 'outside',
+    textfont: { size: 11, color: '#1a2b4a' },
+    marker: { color: colors, line: { width: 0 } },
+    hovertemplate: '<b>%{x}</b><br>Collected: %{y:.1f}%<br><i>payments ÷ receivables</i><extra></extra>',
+  }], {
+    yaxis: {
+      title: '% collected',
+      range: [0, ymax],
+      ticksuffix: '%',
+      gridcolor: '#e8efff',
+    },
+    shapes: [{
+      type: 'line',
+      x0: -0.5,
+      x1: ys.length - 0.5,
+      y0: 100,
+      y1: 100,
+      xref: 'x',
+      yref: 'y',
+      line: { color: '#94a3b8', width: 2, dash: 'dash' },
+    }],
+    annotations: [{
+      x: ys.length - 1,
+      y: 100,
+      text: '100% = fully collected',
+      showarrow: false,
+      yshift: 14,
+      font: { size: 10, color: '#5c6f8a' },
+    }],
+    margin: { t: 30, r: 16, b: 48, l: 56 },
+  });
 }
 
 function renderDailyChart() {
@@ -448,27 +497,33 @@ function closeDrawer() {
   document.getElementById('drawer').classList.add('hidden');
 }
 
-function buildTreemapTrace(items) {
-  const labels = ['All Revenue'];
-  const parents = [''];
-  const values = [0];
-  const ids = ['root'];
-  const colors = ['#f4f7fc'];
+function buildCategoryMapTrace(items) {
+  const labels = [];
+  const parents = [];
+  const values = [];
+  const ids = [];
+  const colors = [];
 
   const groups = [...new Set(items.map((i) => i.category_group || 'Other'))];
+  const groupTotals = {};
+  items.forEach((i) => {
+    const g = i.category_group || 'Other';
+    groupTotals[g] = (groupTotals[g] || 0) + i.amount;
+  });
+
   groups.forEach((g) => {
     const gid = `grp-${g.replace(/[^a-z0-9]/gi, '-')}`;
     labels.push(g);
-    parents.push('root');
+    parents.push('');
     values.push(0);
     ids.push(gid);
     colors.push(GROUP_COLORS[g] || GROUP_COLORS.Other);
   });
 
-  items.forEach((i) => {
+  items.slice(0, 80).forEach((i) => {
     const g = i.category_group || 'Other';
     const gid = `grp-${g.replace(/[^a-z0-9]/gi, '-')}`;
-    const name = (i.FEE_TYPE_SHORTNAME || i.FEE_TYPE_NAME || `Fee ${i.FEE_TYPE_ID}`).slice(0, 50);
+    const name = (i.FEE_TYPE_SHORTNAME || i.FEE_TYPE_NAME || `Fee ${i.FEE_TYPE_ID}`).slice(0, 40);
     labels.push(name);
     parents.push(gid);
     values.push(i.amount);
@@ -477,17 +532,42 @@ function buildTreemapTrace(items) {
   });
 
   return {
-    type: 'treemap',
+    type: 'sunburst',
+    ids,
     labels,
     parents,
     values,
-    ids,
     branchvalues: 'total',
-    marker: { colors, line: { width: 2, color: '#fff' } },
-    textfont: { size: 12, color: '#1a2b4a' },
-    pathbar: { visible: true },
-    hovertemplate: '<b>%{label}</b><br>%{value:,.2f}<extra></extra>',
+    marker: { colors, line: { width: 1, color: '#fff' } },
+    textfont: { size: 11 },
+    insidetextorientation: 'horizontal',
+    hovertemplate: '<b>%{label}</b><br>%{value:,.0f}<br>%{percentRoot:.1%} of total<extra></extra>',
   };
+}
+
+function renderCategoryMap(items) {
+  const el = document.getElementById('chart-treemap');
+  if (!el) return;
+
+  if (!items.length) {
+    el.innerHTML = '<p class="chart-empty">No category data for current filters</p>';
+    return;
+  }
+
+  if (state.activePage !== 'categories') return;
+
+  el.innerHTML = '';
+  const MAP_HEIGHT = 460;
+  Plotly.react('chart-treemap', [buildCategoryMapTrace(items)], {
+    ...PLOT,
+    margin: { t: 10, b: 10, l: 10, r: 10 },
+    height: MAP_HEIGHT,
+    sunburstcolorway: Object.values(GROUP_COLORS),
+  }, { responsive: true, displayModeBar: false });
+
+  requestAnimationFrame(() => {
+    try { Plotly.Plots.resize('chart-treemap'); } catch (_) { /* noop */ }
+  });
 }
 
 function renderCategories() {
@@ -501,18 +581,7 @@ function renderCategories() {
   });
   const items = Object.values(agg).filter((x) => x.amount > 0).sort((a, b) => b.amount - a.amount);
 
-  const treemapEl = document.getElementById('chart-treemap');
-  if (items.length === 0) {
-    treemapEl.innerHTML = '<p style="padding:40px;text-align:center;color:var(--muted)">No category data for current filters</p>';
-  } else {
-    treemapEl.innerHTML = '';
-    const trace = buildTreemapTrace(items);
-    Plotly.react('chart-treemap', [trace], {
-      ...PLOT,
-      margin: { t: 10, b: 10, l: 10, r: 10 },
-      height: treemapEl.clientHeight || 420,
-    }, { responsive: true, displayModeBar: false });
-  }
+  renderCategoryMap(items);
 
   document.querySelector('#table-categories tbody').innerHTML = items.slice(0, 50).map((r) => `
     <tr><td>${r.FEE_TYPE_ID}</td><td>${esc(r.FEE_TYPE_NAME)}</td><td>${badge(r.category_group)}</td>

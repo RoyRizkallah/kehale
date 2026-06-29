@@ -171,13 +171,21 @@ body {
   box-shadow: var(--shadow);
 }
 .card h3 { font-size: .95rem; font-weight: 600; margin-bottom: 14px; color: var(--text); }
+.chart-hint {
+  font-size: .78rem; color: var(--muted); margin: -8px 0 12px;
+  line-height: 1.45;
+}
+.chart-empty {
+  padding: 48px 20px; text-align: center; color: var(--muted);
+  min-height: 320px; display: flex; align-items: center; justify-content: center;
+}
 .card-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 10px; }
 .card-head h3 { margin: 0; }
 .muted { color: var(--muted); font-weight: 400; }
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
 .grid-categories { align-items: stretch; }
-.card-map { min-height: 480px; display: flex; flex-direction: column; }
-.map-chart { flex: 1; min-height: 420px !important; }
+.card-map { min-height: 520px; display: flex; flex-direction: column; }
+.map-chart { flex: 1; min-height: 460px !important; width: 100% !important; }
 
 .chart { width: 100%; min-height: 320px; }
 .chart.tall { min-height: 440px; }
