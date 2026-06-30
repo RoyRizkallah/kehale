@@ -30,60 +30,66 @@
   </div>
 
   <div class="app hidden" id="app">
-    <header class="header">
-      <div class="header-brand">
-        <div class="logo">K</div>
-        <div>
+    <div class="app-chrome">
+      <header class="header">
+        <div class="header-brand">
+          <div class="logo">K</div>
           <h1>Kehale Revenue Monitor</h1>
-          <p id="meta-subtitle">Al-Kahaleh · Site 165</p>
         </div>
-      </div>
-      <nav class="header-nav" id="main-nav">
-        <button class="nav-btn nav-toggle" id="nav-toggle" type="button" aria-label="Menu">☰</button>
-        <div class="nav-links" id="nav-links">
-        <button class="nav-btn active" data-page="overview">Overview</button>
-        <button class="nav-btn" data-page="tracker">Payment Tracker</button>
-        <button class="nav-btn" data-page="recv-tracker">Receivables Tracker</button>
-        <button class="nav-btn" data-page="categories">Categories</button>
-        <button class="nav-btn" data-page="receivables">Receivables</button>
-        <button class="nav-btn" data-page="rates">Exchange Rates</button>
-        </div>
-      </nav>
-    </header>
+        <nav class="header-nav" id="main-nav" aria-label="Main navigation">
+          <button class="nav-btn nav-toggle" id="nav-toggle" type="button" aria-label="Open menu" aria-expanded="false">
+            <span class="nav-toggle-icon"></span>
+          </button>
+          <div class="nav-links" id="nav-links">
+            <button class="nav-btn active" data-page="overview"><span class="nav-icon" aria-hidden="true">◉</span><span>Overview</span></button>
+            <button class="nav-btn" data-page="year-compare"><span class="nav-icon" aria-hidden="true">▤</span><span>Year Compare</span></button>
+            <button class="nav-btn" data-page="tracker"><span class="nav-icon" aria-hidden="true">↓</span><span>Payments</span></button>
+            <button class="nav-btn" data-page="recv-tracker"><span class="nav-icon" aria-hidden="true">↑</span><span>Receivables</span></button>
+            <button class="nav-btn" data-page="categories"><span class="nav-icon" aria-hidden="true">☰</span><span>Categories</span></button>
+            <button class="nav-btn" data-page="receivables"><span class="nav-icon" aria-hidden="true">◫</span><span>Analysis</span></button>
+            <button class="nav-btn" data-page="rates"><span class="nav-icon" aria-hidden="true">⇄</span><span>Rates</span></button>
+          </div>
+        </nav>
+      </header>
 
-    <section class="filter-bar">
-      <div class="filter-grid">
-        <div class="field">
-          <label>From date</label>
-          <input type="date" id="filter-date-from" />
+      <section class="filter-bar" aria-label="Data filters">
+        <div class="filter-toolbar">
+          <div class="filter-fields">
+            <div class="field field-compact">
+              <label for="filter-date-from">From</label>
+              <input type="date" id="filter-date-from" />
+            </div>
+            <div class="field field-compact">
+              <label for="filter-date-to">To</label>
+              <input type="date" id="filter-date-to" />
+            </div>
+            <div class="field field-compact">
+              <label for="filter-year">Year</label>
+              <select id="filter-year"><option value="all">All</option></select>
+            </div>
+            <div class="field field-compact">
+              <label for="filter-group">Group</label>
+              <select id="filter-group"><option value="all">All</option></select>
+            </div>
+            <div class="field field-compact field-search-compact">
+              <label for="filter-search">Search</label>
+              <input type="search" id="filter-search" placeholder="Receipt, taxpayer…" />
+            </div>
+          </div>
+          <div class="filter-toolbar-actions">
+            <div class="currency-toggle" role="group" aria-label="Currency">
+              <button class="currency-btn active" id="btn-usd" type="button" data-currency="usd">USD</button>
+              <button class="currency-btn" id="btn-lbp" type="button" data-currency="lbp">LBP</button>
+            </div>
+            <button class="btn-ghost btn-compact" id="btn-reset" type="button">Reset</button>
+          </div>
         </div>
-        <div class="field">
-          <label>To date</label>
-          <input type="date" id="filter-date-to" />
+        <div class="filter-meta">
+          <div class="filter-chips" id="filter-chips" aria-live="polite"></div>
+          <div class="filter-summary" id="filter-summary"></div>
         </div>
-        <div class="field">
-          <label>Fiscal year</label>
-          <select id="filter-year"><option value="all">All years</option></select>
-        </div>
-        <div class="field">
-          <label>Category group</label>
-          <select id="filter-group"><option value="all">All groups</option></select>
-        </div>
-        <div class="field field-grow">
-          <label>Search</label>
-          <input type="search" id="filter-search" placeholder="Receipt #, taxpayer name…" />
-        </div>
-        <div class="field field-actions">
-          <label>Currency</label>
-          <button class="btn-toggle active" id="btn-usd" type="button">USD</button>
-        </div>
-        <div class="field field-actions">
-          <label>&nbsp;</label>
-          <button class="btn-secondary" id="btn-reset" type="button">Reset filters</button>
-        </div>
-      </div>
-      <div class="filter-summary" id="filter-summary"></div>
-    </section>
+      </section>
+    </div>
 
     <main class="content">
       <!-- OVERVIEW -->
@@ -94,6 +100,23 @@
           <div class="card"><h3>Collection Rate</h3><p class="chart-hint">Share of billed receivables collected as payments each year. Green ≥100%, amber 90–99%, red &lt;90%. Values above 100% mean more was collected than billed that year (prior-year balances, fines, or timing). Dashed line = 100% target.</p><div id="chart-collection" class="chart"></div></div>
         </div>
         <div class="card"><h3>Daily Collections (filtered period)</h3><div id="chart-daily" class="chart"></div></div>
+      </section>
+
+      <!-- YEAR COMPARE -->
+      <section class="page" id="page-year-compare">
+        <div class="kpi-row compact" id="year-compare-kpis"></div>
+        <div class="card">
+          <h3>Year-by-Year Comparison</h3>
+          <p class="chart-hint">One row per fiscal year — receivables billed, payments collected, collection rate, and gap. Respects currency toggle and category group filter. Click column headers to sort.</p>
+          <div class="table-scroll table-scroll-tall">
+            <table class="data-table sortable-table" id="table-year-compare">
+              <thead><tr><!-- headers rendered by app.js --></tr></thead>
+              <tbody></tbody>
+              <tfoot><tr id="year-compare-totals"></tr></tfoot>
+            </table>
+          </div>
+        </div>
+        <div class="card"><h3>Collection Rate by Year</h3><div id="chart-year-compare" class="chart"></div></div>
       </section>
 
       <!-- PAYMENT TRACKER -->
@@ -151,9 +174,50 @@
 
       <!-- RECEIVABLES ANALYSIS -->
       <section class="page" id="page-receivables">
+        <div class="kpi-row compact" id="analysis-kpis"></div>
         <div class="grid-2">
-          <div class="card"><h3>Receivables by Category</h3><div id="chart-recv-bar" class="chart tall"></div></div>
-          <div class="card"><h3>Receivables vs Collections Gap</h3><div id="chart-gap" class="chart tall"></div></div>
+          <div class="card">
+            <h3>Receivables vs Payments by Group</h3>
+            <p class="chart-hint">Side-by-side billed charges and collections per category group for the current filters.</p>
+            <div id="chart-analysis-group" class="chart"></div>
+          </div>
+          <div class="card">
+            <h3>Collection Rate by Group</h3>
+            <p class="chart-hint">Share of each group's receivables collected. Green ≥100%, amber 90–99%, red &lt;90%.</p>
+            <div id="chart-analysis-rate" class="chart"></div>
+          </div>
+        </div>
+        <div class="grid-2">
+          <div class="card">
+            <h3>Top Receivable Categories</h3>
+            <p class="chart-hint">Top 15 fee types by billed amount.</p>
+            <div id="chart-recv-bar" class="chart tall"></div>
+          </div>
+          <div class="card">
+            <h3>Outstanding Gap by Year</h3>
+            <p class="chart-hint">Receivables minus payments each fiscal year. Red = uncollected balance.</p>
+            <div id="chart-gap" class="chart tall"></div>
+          </div>
+        </div>
+        <div class="card">
+          <h3>Group Breakdown</h3>
+          <p class="chart-hint">Receivables, payments, collection rate, and gap per category group.</p>
+          <div class="table-scroll">
+            <table class="data-table" id="table-analysis-groups">
+              <thead>
+                <tr>
+                  <th>Group</th>
+                  <th class="num">Receivables</th>
+                  <th class="num">Payments</th>
+                  <th class="num">Collection %</th>
+                  <th class="num">Gap</th>
+                  <th class="num">Share of recv.</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+              <tfoot><tr id="analysis-groups-totals"></tr></tfoot>
+            </table>
+          </div>
         </div>
       </section>
 

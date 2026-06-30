@@ -42,6 +42,8 @@ const state = {
   sortDir: 'desc',
   recvSortBy: 'date',
   recvSortDir: 'desc',
+  yearCompareSortBy: 'year',
+  yearCompareSortDir: 'desc',
 };
 
 const AUTH_KEY = 'kehale_auth';
@@ -76,11 +78,10 @@ async function loadData() {
   if (loadingText) loadingText.textContent = 'Loading payments…';
   await paymentsPromise;
 
-  document.getElementById('meta-subtitle').textContent =
-    `${DATA.meta.municipality} · ${DATA.meta.receipt_count?.toLocaleString()} receipts`;
   initFilters();
   initPaymentTableSort();
   initReceivableTableSort();
+  initYearCompareSort();
   document.getElementById('loading').classList.add('hidden');
   document.getElementById('app').classList.remove('hidden');
   renderAll();
@@ -125,7 +126,7 @@ function showLoadError(err) {
 }
 
 function resizeVisibleCharts() {
-  ['chart-yearly', 'chart-collection', 'chart-daily', 'chart-group-bar', 'chart-recv-bar', 'chart-gap', 'chart-rates'].forEach((id) => {
+  ['chart-yearly', 'chart-collection', 'chart-daily', 'chart-group-bar', 'chart-recv-bar', 'chart-gap', 'chart-rates', 'chart-year-compare', 'chart-analysis-group', 'chart-analysis-rate'].forEach((id) => {
     const el = document.getElementById(id);
     if (el && el.offsetParent !== null) {
       try { Plotly.Plots.resize(el); } catch (_) { /* not rendered yet */ }
@@ -189,6 +190,7 @@ function initFilters() {
     state.search = document.getElementById('filter-search').value.trim().toLowerCase();
     state.page = 1;
     state.recvPage = 1;
+    renderFilterChips();
     renderAll();
   };
 
@@ -198,12 +200,20 @@ function initFilters() {
   grpSel.addEventListener('change', onChange);
   document.getElementById('filter-search').addEventListener('input', debounce(onChange, 250));
 
-  document.getElementById('btn-usd').addEventListener('click', () => {
-    state.usd = !state.usd;
-    document.getElementById('btn-usd').classList.toggle('active', state.usd);
-    document.getElementById('btn-usd').textContent = state.usd ? 'USD' : 'LBP';
+  function syncCurrencyButtons() {
+    document.getElementById('btn-usd')?.classList.toggle('active', state.usd);
+    document.getElementById('btn-lbp')?.classList.toggle('active', !state.usd);
+  }
+  function setCurrency(usd) {
+    if (state.usd === usd) return;
+    state.usd = usd;
+    syncCurrencyButtons();
+    renderFilterChips();
     renderAll();
-  });
+  }
+  document.getElementById('btn-usd')?.addEventListener('click', () => setCurrency(true));
+  document.getElementById('btn-lbp')?.addEventListener('click', () => setCurrency(false));
+  syncCurrencyButtons();
 
   document.getElementById('btn-reset').addEventListener('click', () => {
     from.value = DATA.meta.date_min || '';
@@ -218,7 +228,10 @@ function initFilters() {
   document.getElementById('drawer-backdrop').addEventListener('click', closeDrawer);
 
   document.getElementById('nav-toggle')?.addEventListener('click', () => {
-    document.getElementById('nav-links')?.classList.toggle('open');
+    const links = document.getElementById('nav-links');
+    const toggle = document.getElementById('nav-toggle');
+    const open = links?.classList.toggle('open');
+    toggle?.setAttribute('aria-expanded', String(!!open));
   });
 
   document.querySelectorAll('.nav-btn[data-page]').forEach((btn) => {
@@ -242,6 +255,22 @@ function initFilters() {
   });
 
   window.addEventListener('resize', debounce(resizeVisibleCharts, 150));
+  renderFilterChips();
+}
+
+function renderFilterChips() {
+  const el = document.getElementById('filter-chips');
+  if (!el) return;
+  const chips = [];
+  const min = DATA?.meta?.date_min;
+  const max = DATA?.meta?.date_max;
+  if (state.dateFrom && state.dateFrom !== min) chips.push(`<span class="filter-chip">From ${esc(state.dateFrom)}</span>`);
+  if (state.dateTo && state.dateTo !== max) chips.push(`<span class="filter-chip">To ${esc(state.dateTo)}</span>`);
+  if (state.year !== 'all') chips.push(`<span class="filter-chip">FY ${esc(state.year)}</span>`);
+  if (state.group !== 'all') chips.push(`<span class="filter-chip">${esc(state.group)}</span>`);
+  if (state.search) chips.push(`<span class="filter-chip">"${esc(state.search)}"</span>`);
+  chips.push(`<span class="filter-chip chip-currency">${state.usd ? 'USD' : 'LBP'}</span>`);
+  el.innerHTML = chips.length > 1 ? chips.join('') : chips.join('');
 }
 
 function debounce(fn, ms) {
@@ -331,7 +360,7 @@ function renderPaymentTableHeaders() {
   row.innerHTML = PAYMENT_SORT_COLS.map((c) => {
     const active = state.sortBy === c.key;
     const arrow = active ? (state.sortDir === 'asc' ? '▲' : '▼') : '⇅';
-    const cls = `sortable${c.key === 'amount' ? ' num' : ''}${active ? ' active' : ''}`;
+    const cls = `sortable${c.numeric ? ' num' : ''}${active ? ' active' : ''}`;
     return `<th class="${cls}" data-sort="${c.key}" title="Sort by ${c.label}"><span>${c.label}</span><span class="sort-icon">${arrow}</span></th>`;
   }).join('') + '<th class="col-actions"></th>';
 }
@@ -352,6 +381,7 @@ function updateFilterSummary(count, total, label = 'payments') {
   if (state.search) parts.push(`search "<strong>${esc(state.search)}</strong>"`);
   const filt = count != null ? ` · showing <strong>${count.toLocaleString()}</strong> of ${total.toLocaleString()} ${label}` : '';
   el.innerHTML = (parts.length ? parts.join(' · ') : 'All data') + filt;
+  renderFilterChips();
 }
 
 function renderAll() {
@@ -362,6 +392,7 @@ function renderAll() {
   renderCategories();
   renderReceivables();
   renderRates();
+  renderYearCompare();
   if (PAYMENTS) renderTracker();
   if (RECEIVABLES) renderRecvTracker();
 }
@@ -540,12 +571,12 @@ function renderTracker() {
     const grp = (p.category_groups || [])[0] || '—';
     return `<tr data-idx="${start + i}">
       <td>${esc(p.date)}</td>
-      <td><strong>${p.receipt_number ?? '—'}</strong></td>
+      <td class="num"><strong>${p.receipt_number ?? '—'}</strong></td>
       <td>${esc(p.taxpayer) || '—'}</td>
       <td>${esc(p.primary_category) || '—'}</td>
       <td>${grp !== '—' ? badge(grp) : '—'}</td>
       <td class="num">${fmtMoney(u ? p.amount_usd : p.amount_lbp, u)}</td>
-      <td>${p.budget_year ?? '—'}</td>
+      <td class="num">${p.budget_year ?? '—'}</td>
       <td><button class="btn-link" type="button" data-action="detail" data-idx="${start + i}">Details →</button></td>
     </tr>`;
   }).join('') || '<tr><td colspan="8" style="text-align:center;padding:32px;color:var(--muted)">No payments match filters</td></tr>';
@@ -649,7 +680,7 @@ function renderReceivableTableHeaders() {
   row.innerHTML = RECEIVABLE_SORT_COLS.map((c) => {
     const active = state.recvSortBy === c.key;
     const arrow = active ? (state.recvSortDir === 'asc' ? '▲' : '▼') : '⇅';
-    const cls = `sortable${c.key === 'amount' ? ' num' : ''}${active ? ' active' : ''}`;
+    const cls = `sortable${c.numeric ? ' num' : ''}${active ? ' active' : ''}`;
     return `<th class="${cls}" data-sort="${c.key}" title="Sort by ${c.label}"><span>${c.label}</span><span class="sort-icon">${arrow}</span></th>`;
   }).join('') + '<th class="col-actions"></th>';
 }
@@ -680,12 +711,12 @@ function renderRecvTracker() {
     const grp = (r.category_groups || [])[0] || '—';
     return `<tr data-idx="${start + i}">
       <td>${esc(r.date) || '—'}</td>
-      <td><strong>${r.pay_trans_id ?? '—'}</strong></td>
+      <td class="num"><strong>${r.pay_trans_id ?? '—'}</strong></td>
       <td>${esc(r.taxpayer) || '—'}</td>
       <td>${esc(r.primary_category) || '—'}</td>
       <td>${grp !== '—' ? badge(grp) : '—'}</td>
       <td class="num">${fmtMoney(u ? r.amount_usd : r.amount_lbp, u)}</td>
-      <td>${r.budget_year ?? '—'}</td>
+      <td class="num">${r.budget_year ?? '—'}</td>
       <td><button class="btn-link" type="button" data-action="detail" data-idx="${start + i}">Details →</button></td>
     </tr>`;
   }).join('') || '<tr><td colspan="8" style="text-align:center;padding:32px;color:var(--muted)">No receivable charges match filters</td></tr>';
@@ -1153,26 +1184,141 @@ function renderCategories() {
   renderCategoryCharts();
 }
 
+function getAnalysisGroupRows() {
+  const u = state.usd;
+  const recv = {};
+  const pay = {};
+  filterCategories(DATA.categories_by_year).forEach((c) => {
+    const g = c.category_group || 'Other';
+    recv[g] = (recv[g] || 0) + (u ? c.amount_usd : c.amount_lbp);
+  });
+  (DATA.payments_by_year || []).forEach((c) => {
+    if (state.year !== 'all' && c.year !== Number(state.year)) return;
+    if (state.group !== 'all' && c.category_group !== state.group) return;
+    const g = c.category_group || 'Other';
+    pay[g] = (pay[g] || 0) + (u ? c.amount_usd : c.amount_lbp);
+  });
+  return [...new Set([...Object.keys(recv), ...Object.keys(pay)])].map((g) => {
+    const r = recv[g] || 0;
+    const p = pay[g] || 0;
+    return { group: g, receivables: r, payments: p, gap: r - p, rate: r ? (p / r) * 100 : 0 };
+  }).sort((a, b) => b.receivables - a.receivables);
+}
+
+function getFilteredYearlyRows() {
+  const u = state.usd;
+  let rows = DATA.yearly_summary.map((r) => ({
+    year: r.year,
+    receivables: u ? r.receivables_usd : r.receivables_lbp,
+    payments: u ? r.payments_usd : r.payments_lbp,
+    gap: u ? r.gap_usd : r.gap_lbp,
+    collection_rate: r.collection_rate,
+  }));
+  if (state.year !== 'all') rows = rows.filter((r) => r.year === Number(state.year));
+  return rows;
+}
+
 function renderReceivables() {
+  const u = state.usd;
+  const groupRows = getAnalysisGroupRows();
+  const totalRecv = groupRows.reduce((s, r) => s + r.receivables, 0);
+  const totalPay = groupRows.reduce((s, r) => s + r.payments, 0);
+  const totalGap = totalRecv - totalPay;
+  const totalRate = totalRecv ? (totalPay / totalRecv) * 100 : 0;
+  const worstGroup = groupRows.filter((r) => r.receivables > 0).sort((a, b) => a.rate - b.rate)[0];
+
+  const kpiEl = document.getElementById('analysis-kpis');
+  if (kpiEl) {
+    kpiEl.innerHTML = `
+      <div class="kpi green"><div class="kpi-label">Receivables Billed</div><div class="kpi-value">${fmtMoney(totalRecv, u)}</div><div class="kpi-sub">${groupRows.length} groups</div></div>
+      <div class="kpi"><div class="kpi-label">Payments Collected</div><div class="kpi-value">${fmtMoney(totalPay, u)}</div><div class="kpi-sub">matched to filters</div></div>
+      <div class="kpi amber"><div class="kpi-label">Overall Collection</div><div class="kpi-value">${fmtPct(totalRate)}</div><div class="kpi-sub">payments ÷ receivables</div></div>
+      <div class="kpi rose"><div class="kpi-label">Total Gap</div><div class="kpi-value">${fmtMoney(totalGap, u)}</div><div class="kpi-sub">${worstGroup ? `lowest: ${esc(worstGroup.group)} (${fmtPct(worstGroup.rate)})` : 'uncollected balance'}</div></div>`;
+  }
+
+  const groups = groupRows.map((r) => r.group);
+  plotly('chart-analysis-group', [
+    { x: groups, y: groupRows.map((r) => r.receivables), name: 'Receivables', type: 'bar', marker: { color: '#93b4ff' } },
+    { x: groups, y: groupRows.map((r) => r.payments), name: 'Payments', type: 'bar', marker: { color: BLUE } },
+  ], {
+    barmode: 'group',
+    xaxis: { type: 'category', tickangle: -12 },
+    yaxis: { title: u ? 'USD' : 'LBP' },
+    margin: { t: 20, r: 16, b: 72, l: 56 },
+  });
+
+  const rates = groupRows.map((r) => r.rate);
+  plotly('chart-analysis-rate', [{
+    y: groups.slice().reverse(),
+    x: rates.slice().reverse(),
+    type: 'bar',
+    orientation: 'h',
+    marker: { color: rates.slice().reverse().map((r) => (r >= 99.95 ? '#0d9f6e' : r >= 90 ? '#d97706' : '#dc2626')) },
+    hovertemplate: '<b>%{y}</b><br>Collected: %{x:.1f}%<extra></extra>',
+  }], {
+    xaxis: { title: '% collected', range: [0, Math.max(120, Math.ceil(Math.max(...rates, 100) / 20) * 20)] },
+    margin: { t: 20, r: 16, b: 48, l: 140 },
+    shapes: [{
+      type: 'line', xref: 'x', yref: 'paper', x0: 100, x1: 100, y0: 0, y1: 1,
+      line: { color: '#94a3b8', width: 2, dash: 'dash' },
+    }],
+    showlegend: false,
+  });
+
   const cats = filterCategories(DATA.categories_by_year);
   const agg = {};
   cats.forEach((c) => {
     const k = c.FEE_TYPE_ID;
-    if (!agg[k]) agg[k] = { name: (c.FEE_TYPE_SHORTNAME || c.FEE_TYPE_NAME || '').slice(0, 45), val: 0 };
-    agg[k].val += state.usd ? c.amount_usd : c.amount_lbp;
+    if (!agg[k]) agg[k] = { name: (c.FEE_TYPE_SHORTNAME || c.FEE_TYPE_NAME || '').slice(0, 40), val: 0 };
+    agg[k].val += u ? c.amount_usd : c.amount_lbp;
   });
-  const top = Object.values(agg).sort((a, b) => b.val - a.val).slice(0, 20);
+  const top = Object.values(agg).sort((a, b) => b.val - a.val).slice(0, 15);
   plotly('chart-recv-bar', [{
     y: top.map((t) => t.name).reverse(), x: top.map((t) => t.val).reverse(),
     type: 'bar', orientation: 'h', marker: { color: BLUE, opacity: 0.85 },
-  }], { margin: { l: 180 }, xaxis: { title: state.usd ? 'USD' : 'LBP' } });
+    hovertemplate: '<b>%{y}</b><br>%{x:,.0f}<extra></extra>',
+  }], { margin: { l: 160, t: 20, r: 16, b: 48 }, xaxis: { title: u ? 'USD' : 'LBP' } });
 
-  const ys = DATA.yearly_summary.sort((a, b) => a.year - b.year);
-  const u = state.usd;
+  const ys = getFilteredYearlyRows().sort((a, b) => a.year - b.year);
   plotly('chart-gap', [{
-    x: ys.map((r) => r.year), y: ys.map((r) => u ? r.gap_usd : r.gap_lbp),
-    type: 'bar', marker: { color: ys.map((r) => (r.gap_usd || 0) >= 0 ? '#fca5a5' : '#86efac') },
-  }], { yaxis: { title: u ? 'USD gap' : 'LBP gap' } });
+    x: ys.map((r) => r.year), y: ys.map((r) => r.gap),
+    type: 'bar',
+    marker: { color: ys.map((r) => (r.gap >= 0 ? '#fca5a5' : '#86efac')) },
+    hovertemplate: '<b>%{x}</b><br>Gap: %{y:,.0f}<extra></extra>',
+  }], { yaxis: { title: u ? 'USD gap' : 'LBP gap' }, xaxis: { type: 'category' } });
+
+  const tbody = document.querySelector('#table-analysis-groups tbody');
+  const tfoot = document.getElementById('analysis-groups-totals');
+  if (tbody) {
+    tbody.innerHTML = groupRows.map((r) => {
+      const share = totalRecv ? (r.receivables / totalRecv) * 100 : 0;
+      const gapCls = r.gap >= 0 ? 'gap-pos' : 'gap-neg';
+      return `<tr>
+        <td>${badge(r.group)}</td>
+        <td class="num">${fmtMoney(r.receivables, u)}</td>
+        <td class="num">${fmtMoney(r.payments, u)}</td>
+        <td class="num">${ratePill(r.rate)}</td>
+        <td class="num ${gapCls}">${fmtMoney(r.gap, u)}</td>
+        <td class="num">${fmtPct(share)}</td>
+      </tr>`;
+    }).join('') || '<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--muted)">No data for current filters</td></tr>';
+  }
+  if (tfoot) {
+    const gapCls = totalGap >= 0 ? 'gap-pos' : 'gap-neg';
+    tfoot.innerHTML = `<td><strong>Total</strong></td>
+      <td class="num"><strong>${fmtMoney(totalRecv, u)}</strong></td>
+      <td class="num"><strong>${fmtMoney(totalPay, u)}</strong></td>
+      <td class="num">${ratePill(totalRate)}</td>
+      <td class="num ${gapCls}"><strong>${fmtMoney(totalGap, u)}</strong></td>
+      <td class="num"><strong>100%</strong></td>`;
+  }
+
+  if (state.activePage === 'receivables') {
+    const groupNote = state.group !== 'all' ? ` · group <strong>${esc(state.group)}</strong>` : '';
+    const yearNote = state.year !== 'all' ? ` · year <strong>${state.year}</strong>` : '';
+    document.getElementById('filter-summary').innerHTML =
+      `Analysis: <strong>${groupRows.length}</strong> groups${yearNote}${groupNote} · ${u ? 'USD' : 'LBP'}`;
+  }
 }
 
 function renderRates() {
@@ -1186,6 +1332,192 @@ function renderRates() {
   document.querySelector('#table-rates tbody').innerHTML = rates.map((r) => `
     <tr><td>${r.year}</td><td class="num">${Number(r.lbp_per_usd).toLocaleString()}</td>
     <td class="num">${r.usd_per_lbp?.toExponential(3) || '—'}</td><td>${r.source}</td></tr>`).join('');
+}
+
+const YEAR_COMPARE_COLS = [
+  { key: 'year', label: 'Year', numeric: true, defaultDir: 'desc' },
+  { key: 'receivables', label: 'Receivables', numeric: true, defaultDir: 'desc' },
+  { key: 'payments', label: 'Payments', numeric: true, defaultDir: 'desc' },
+  { key: 'collection_rate', label: 'Collection %', numeric: true, defaultDir: 'desc' },
+  { key: 'gap', label: 'Gap', numeric: true, defaultDir: 'desc' },
+  { key: 'payments_count', label: 'Receipts', numeric: true, defaultDir: 'desc' },
+  { key: 'receivable_lines', label: 'Charge lines', numeric: true, defaultDir: 'desc' },
+  { key: 'lbp_per_usd', label: 'LBP / USD', numeric: true, defaultDir: 'desc' },
+];
+
+function ratePill(pct) {
+  const n = Number(pct) || 0;
+  const cls = n >= 99.95 ? 'good' : n >= 90 ? 'warn' : 'bad';
+  return `<span class="rate-pill ${cls}">${fmtPct(n)}</span>`;
+}
+
+function getYearCompareRows() {
+  const u = state.usd;
+  let rows;
+
+  if (state.group === 'all') {
+    rows = DATA.yearly_summary.map((r) => ({
+      year: r.year,
+      receivables: u ? r.receivables_usd : r.receivables_lbp,
+      payments: u ? r.payments_usd : r.payments_lbp,
+      gap: u ? r.gap_usd : r.gap_lbp,
+      collection_rate: r.collection_rate,
+      payments_count: r.payments_count || 0,
+      receivable_lines: r.receivable_lines || 0,
+      lbp_per_usd: r.lbp_per_usd,
+    }));
+  } else {
+    const recvByYear = {};
+    filterCategories(DATA.categories_by_year).forEach((c) => {
+      if (!recvByYear[c.year]) {
+        recvByYear[c.year] = { year: c.year, receivables: 0, receivable_lines: 0, lbp_per_usd: c.lbp_per_usd };
+      }
+      recvByYear[c.year].receivables += u ? c.amount_usd : c.amount_lbp;
+      recvByYear[c.year].receivable_lines += c.line_count || 0;
+    });
+    const payByYear = {};
+    (DATA.payments_by_year || []).forEach((c) => {
+      if (c.category_group !== state.group) return;
+      if (!payByYear[c.year]) payByYear[c.year] = { payments: 0, line_count: 0 };
+      payByYear[c.year].payments += u ? c.amount_usd : c.amount_lbp;
+      payByYear[c.year].line_count += c.line_count || 0;
+    });
+    const years = new Set([...Object.keys(recvByYear), ...Object.keys(payByYear)].map(Number));
+    rows = [...years].map((year) => {
+      const recv = recvByYear[year]?.receivables || 0;
+      const pay = payByYear[year]?.payments || 0;
+      const rateRow = DATA.yearly_summary.find((r) => r.year === year);
+      return {
+        year,
+        receivables: recv,
+        payments: pay,
+        gap: recv - pay,
+        collection_rate: recv ? (pay / recv) * 100 : 0,
+        payments_count: payByYear[year]?.line_count || 0,
+        receivable_lines: recvByYear[year]?.receivable_lines || 0,
+        lbp_per_usd: rateRow?.lbp_per_usd || recvByYear[year]?.lbp_per_usd,
+      };
+    });
+  }
+
+  if (state.year !== 'all') rows = rows.filter((r) => r.year === Number(state.year));
+  return rows;
+}
+
+function yearCompareSortValue(row, key) {
+  return row[key] ?? 0;
+}
+
+function sortYearCompareRows(rows) {
+  const col = YEAR_COMPARE_COLS.find((c) => c.key === state.yearCompareSortBy);
+  if (!col) return rows;
+  const mul = state.yearCompareSortDir === 'asc' ? 1 : -1;
+  return [...rows].sort((a, b) => (yearCompareSortValue(a, col.key) - yearCompareSortValue(b, col.key)) * mul);
+}
+
+function initYearCompareSort() {
+  const thead = document.querySelector('#table-year-compare thead');
+  if (!thead || thead.dataset.sortInit) return;
+  thead.dataset.sortInit = '1';
+  thead.addEventListener('click', (e) => {
+    const th = e.target.closest('th[data-sort]');
+    if (!th) return;
+    const key = th.dataset.sort;
+    if (state.yearCompareSortBy === key) {
+      state.yearCompareSortDir = state.yearCompareSortDir === 'asc' ? 'desc' : 'asc';
+    } else {
+      state.yearCompareSortBy = key;
+      const col = YEAR_COMPARE_COLS.find((c) => c.key === key);
+      state.yearCompareSortDir = col?.defaultDir || 'desc';
+    }
+    renderYearCompare();
+  });
+}
+
+function renderYearCompareTableHeaders() {
+  const row = document.querySelector('#table-year-compare thead tr');
+  if (!row) return;
+  row.innerHTML = YEAR_COMPARE_COLS.map((c) => {
+    const active = state.yearCompareSortBy === c.key;
+    const arrow = active ? (state.yearCompareSortDir === 'asc' ? '▲' : '▼') : '⇅';
+    const cls = `sortable${c.key !== 'year' ? ' num' : ''}${active ? ' active' : ''}`;
+    return `<th class="${cls}" data-sort="${c.key}" title="Sort by ${c.label}"><span>${c.label}</span><span class="sort-icon">${arrow}</span></th>`;
+  }).join('');
+}
+
+function renderYearCompare() {
+  if (!DATA) return;
+  renderYearCompareTableHeaders();
+  const u = state.usd;
+  const rows = sortYearCompareRows(getYearCompareRows());
+
+  const totalRecv = rows.reduce((s, r) => s + r.receivables, 0);
+  const totalPay = rows.reduce((s, r) => s + r.payments, 0);
+  const totalGap = totalRecv - totalPay;
+  const totalRate = totalRecv ? (totalPay / totalRecv) * 100 : 0;
+
+  document.getElementById('year-compare-kpis').innerHTML = `
+    <div class="kpi"><div class="kpi-label">Years</div><div class="kpi-value">${rows.length}</div></div>
+    <div class="kpi green"><div class="kpi-label">Total Receivables</div><div class="kpi-value">${fmtMoney(totalRecv, u)}</div></div>
+    <div class="kpi"><div class="kpi-label">Total Payments</div><div class="kpi-value">${fmtMoney(totalPay, u)}</div></div>
+    <div class="kpi amber"><div class="kpi-label">Overall Rate</div><div class="kpi-value">${fmtPct(totalRate)}</div></div>`;
+
+  const tbody = document.querySelector('#table-year-compare tbody');
+  tbody.innerHTML = rows.map((r) => {
+    const gapCls = r.gap >= 0 ? 'gap-pos' : 'gap-neg';
+    return `<tr>
+      <td><strong>${r.year}</strong></td>
+      <td class="num">${fmtMoney(r.receivables, u)}</td>
+      <td class="num">${fmtMoney(r.payments, u)}</td>
+      <td class="num">${ratePill(r.collection_rate)}</td>
+      <td class="num ${gapCls}">${fmtMoney(r.gap, u)}</td>
+      <td class="num">${(r.payments_count || 0).toLocaleString()}</td>
+      <td class="num">${(r.receivable_lines || 0).toLocaleString()}</td>
+      <td class="num">${r.lbp_per_usd ? Number(r.lbp_per_usd).toLocaleString() : '—'}</td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="8" style="text-align:center;padding:32px;color:var(--muted)">No years match filters</td></tr>';
+
+  const tfoot = document.getElementById('year-compare-totals');
+  if (tfoot) {
+    const gapCls = totalGap >= 0 ? 'gap-pos' : 'gap-neg';
+    tfoot.innerHTML = `
+      <td><strong>Total</strong></td>
+      <td class="num">${fmtMoney(totalRecv, u)}</td>
+      <td class="num">${fmtMoney(totalPay, u)}</td>
+      <td class="num">${ratePill(totalRate)}</td>
+      <td class="num ${gapCls}">${fmtMoney(totalGap, u)}</td>
+      <td class="num">${rows.reduce((s, r) => s + (r.payments_count || 0), 0).toLocaleString()}</td>
+      <td class="num">${rows.reduce((s, r) => s + (r.receivable_lines || 0), 0).toLocaleString()}</td>
+      <td class="num">—</td>`;
+  }
+
+  if (state.activePage === 'year-compare') {
+    const groupNote = state.group !== 'all' ? ` · group <strong>${esc(state.group)}</strong>` : '';
+    const yearNote = state.year !== 'all' ? ` · year <strong>${state.year}</strong>` : '';
+    document.getElementById('filter-summary').innerHTML =
+      `Showing <strong>${rows.length}</strong> year(s)${yearNote}${groupNote} · ${u ? 'USD' : 'LBP'}`;
+  }
+
+  const chartRows = [...rows].sort((a, b) => a.year - b.year);
+  const rates = chartRows.map((r) => Number(r.collection_rate) || 0);
+  const ymax = Math.max(120, Math.ceil(Math.max(...rates, 100) / 20) * 20 + 20);
+  const years = chartRows.map((r) => String(r.year));
+  plotlyFresh('chart-year-compare', [{
+    x: years,
+    y: rates,
+    type: 'bar',
+    marker: { color: rates.map((r) => (r >= 99.95 ? '#0d9f6e' : r >= 90 ? '#d97706' : '#dc2626')) },
+    hovertemplate: '<b>%{x}</b><br>Collected: %{y:.1f}%<extra></extra>',
+  }], {
+    xaxis: { type: 'category', categoryorder: 'array', categoryarray: years, title: 'Year' },
+    yaxis: { title: '% collected', range: [0, ymax], ticksuffix: '%' },
+    shapes: [{
+      type: 'line', xref: 'paper', yref: 'y', x0: 0, x1: 1, y0: 100, y1: 100,
+      line: { color: '#94a3b8', width: 2, dash: 'dash' },
+    }],
+    showlegend: false,
+    margin: { t: 20, r: 16, b: 48, l: 56 },
+  });
 }
 
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeDrawer(); });
