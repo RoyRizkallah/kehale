@@ -9127,15 +9127,15 @@
       "FEE_TYPE_DET": null,
       "amount_lbp": 145900000,
       "line_count": 1459,
-      "FEE_TYPE_NAME": "nan",
-      "FEE_TYPE_SHORTNAME": "nan",
+      "FEE_TYPE_NAME": "رسم على القيمة التأجيرية (سكن)",
+      "FEE_TYPE_SHORTNAME": "رسم على القيمة التأجيرية (سكن)",
       "FEETP": null,
       "YEARLY": null,
       "TREASURY_FEE_FLAG": null,
       "lbp_per_usd": 89500,
       "amount_usd": 1630.17,
-      "category_group": "Miscellaneous Revenue",
-      "budget_code": null,
+      "category_group": "الرسوم التي تستوفيها البلدية بطريقة مباشرة من المكلفين",
+      "budget_code": "01-01",
       "category_key": "1"
     },
     {
@@ -9535,15 +9535,15 @@
       "FEE_TYPE_DET": null,
       "amount_lbp": 62400000,
       "line_count": 624,
-      "FEE_TYPE_NAME": "nan",
-      "FEE_TYPE_SHORTNAME": "nan",
+      "FEE_TYPE_NAME": "رسم على القيمة التأجيرية (سكن)",
+      "FEE_TYPE_SHORTNAME": "رسم على القيمة التأجيرية (سكن)",
       "FEETP": null,
       "YEARLY": null,
       "TREASURY_FEE_FLAG": null,
       "lbp_per_usd": 89500,
       "amount_usd": 697.21,
-      "category_group": "Miscellaneous Revenue",
-      "budget_code": null,
+      "category_group": "الرسوم التي تستوفيها البلدية بطريقة مباشرة من المكلفين",
+      "budget_code": "01-01",
       "category_key": "1"
     },
     {
@@ -18343,15 +18343,15 @@
       "FEE_TYPE_DET": null,
       "amount_lbp": 145900000,
       "line_count": 1459,
-      "FEE_TYPE_NAME": "nan",
-      "FEE_TYPE_SHORTNAME": "nan",
+      "FEE_TYPE_NAME": "رسم على القيمة التأجيرية (سكن)",
+      "FEE_TYPE_SHORTNAME": "رسم على القيمة التأجيرية (سكن)",
       "FEETP": null,
       "YEARLY": null,
       "TREASURY_FEE_FLAG": null,
       "lbp_per_usd": 89500,
       "amount_usd": 1630.17,
-      "category_group": "Miscellaneous Revenue",
-      "budget_code": null,
+      "category_group": "الرسوم التي تستوفيها البلدية بطريقة مباشرة من المكلفين",
+      "budget_code": "01-01",
       "category_key": "1"
     },
     {
@@ -18751,15 +18751,15 @@
       "FEE_TYPE_DET": null,
       "amount_lbp": 62400000,
       "line_count": 624,
-      "FEE_TYPE_NAME": "nan",
-      "FEE_TYPE_SHORTNAME": "nan",
+      "FEE_TYPE_NAME": "رسم على القيمة التأجيرية (سكن)",
+      "FEE_TYPE_SHORTNAME": "رسم على القيمة التأجيرية (سكن)",
       "FEETP": null,
       "YEARLY": null,
       "TREASURY_FEE_FLAG": null,
       "lbp_per_usd": 89500,
       "amount_usd": 697.21,
-      "category_group": "Miscellaneous Revenue",
-      "budget_code": null,
+      "category_group": "الرسوم التي تستوفيها البلدية بطريقة مباشرة من المكلفين",
+      "budget_code": "01-01",
       "category_key": "1"
     },
     {
@@ -19414,9 +19414,9 @@
       "category_key": "1",
       "FEE_TYPE_ID": 1,
       "FEE_TYPE_DET": null,
-      "FEE_TYPE_NAME": "nan",
-      "FEE_TYPE_SHORTNAME": "nan",
-      "category_group": "Miscellaneous Revenue",
+      "FEE_TYPE_NAME": "رسم على القيمة التأجيرية (سكن)",
+      "FEE_TYPE_SHORTNAME": "رسم على القيمة التأجيرية (سكن)",
+      "category_group": "الرسوم التي تستوفيها البلدية بطريقة مباشرة من المكلفين",
       "total_lbp": 208300000,
       "total_usd": 2327.37
     },
@@ -19534,7 +19534,7 @@
   "category_groups": [
     {
       "category_group": "الرسوم التي تستوفيها البلدية بطريقة مباشرة من المكلفين",
-      "total_usd": 5616108.44
+      "total_usd": 5618435.81
     },
     {
       "category_group": "الرسوم التي تستوفيها الدولة لحساب جميع البلديات (عائدات البلدية من الصندوق البلدي المستقل)",
@@ -19547,10 +19547,6 @@
     {
       "category_group": "العائدات المتنوعة",
       "total_usd": 627964.2
-    },
-    {
-      "category_group": "Miscellaneous Revenue",
-      "total_usd": 2327.37
     }
   ],
   "monthly_payments": [

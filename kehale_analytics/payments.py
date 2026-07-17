@@ -217,9 +217,32 @@ def _lookup_fee_budget(
     det = _rental_det_key(fid, fee_type_det)
     if det is not None and (fid, det) in budget_map:
         return budget_map[(fid, det)]
-    if (fid, 0) in budget_map:
+    if (fid, 0) in budget_map and (
+        budget_map[(fid, 0)].get("section_desc") or budget_map[(fid, 0)].get("chapter_desc")
+    ):
         return budget_map[(fid, 0)]
+    # Rental lines sometimes omit FEE_TYPE_DET — default to residential (سكن).
+    if fid == RENTAL_FEE_TYPE_ID and (fid, 1) in budget_map:
+        return budget_map[(fid, 1)]
+    # Any mapped det for this fee.
+    for (f, _d), meta in budget_map.items():
+        if f == fid and (meta.get("section_desc") or meta.get("chapter_desc")):
+            return meta
     return None
+
+
+def _fee_row_or_none(fee_lu: pd.DataFrame, fee_type_id: Any) -> Any | None:
+    """Return FEE_TYPES row if present (DMP FEE_TYPES is incomplete vs journal fee ids)."""
+    if pd.isna(fee_type_id):
+        return None
+    try:
+        fid = int(fee_type_id)
+    except (TypeError, ValueError):
+        return None
+    if fid not in fee_lu.index:
+        return None
+    f = fee_lu.loc[fid]
+    return f.iloc[0] if isinstance(f, pd.DataFrame) else f
 
 
 def _fee_category_fields(
@@ -228,20 +251,32 @@ def _fee_category_fields(
     fee_type_det: Any,
     budget_map: dict[tuple[int, int], dict[str, Any]],
 ) -> dict[str, Any]:
-    """Resolve display names + official income budget category for a fee line."""
-    base_name = str(fee_row.get("FEE_TYPE_NAME") or "") if fee_row is not None else ""
-    base_short = str(fee_row.get("FEE_TYPE_SHORTNAME") or "") if fee_row is not None else ""
-    feetp = int(fee_row.get("FEETP", 3)) if fee_row is not None and pd.notna(fee_row.get("FEETP")) else 3
+    """Resolve display names + official income budget category for a fee line.
+
+    Prefer FEE_TANSSIB / MBS section labels; FEE_TYPES is only a fallback because
+    many FEE_TYPE_IDs used on journals are missing from RUSUM.FEE_TYPES in the DMP.
+    """
+    base_name = ""
+    base_short = ""
+    feetp = 3
+    if fee_row is not None:
+        base_name = _clean_str(fee_row.get("FEE_TYPE_NAME"))
+        base_short = _clean_str(fee_row.get("FEE_TYPE_SHORTNAME"))
+        if pd.notna(fee_row.get("FEETP")):
+            try:
+                feetp = int(fee_row.get("FEETP"))
+            except (TypeError, ValueError):
+                feetp = 3
     fallback_group = FEETP_LABELS.get(feetp, "Other")
-    fee_name = _fee_display_name(base_name, fee_type_id, fee_type_det)
+    fee_name = _fee_display_name(base_name, fee_type_id, fee_type_det) if base_name else ""
     fee_short = (
         _fee_display_name(base_short, fee_type_id, fee_type_det)
-        if _rental_det_key(fee_type_id, fee_type_det)
+        if base_short and _rental_det_key(fee_type_id, fee_type_det)
         else base_short
     )
     bud = _lookup_fee_budget(budget_map, fee_type_id, fee_type_det)
     if bud and (bud.get("section_desc") or bud.get("chapter_desc")):
-        section_desc = bud.get("section_desc") or fee_name
+        section_desc = bud.get("section_desc") or fee_name or bud.get("budget_code") or ""
         return {
             "fee_name": section_desc,
             "fee_short": section_desc,
@@ -252,6 +287,14 @@ def _fee_category_fields(
             "chapter_desc": bud.get("chapter_desc") or "",
             "section_desc": section_desc,
         }
+    # Last resort: bare fee id label so the UI is never blank when a fee exists.
+    if not fee_name and pd.notna(fee_type_id):
+        try:
+            fee_name = f"Fee {int(fee_type_id)}"
+        except (TypeError, ValueError):
+            fee_name = "Fee"
+        if _rental_det_key(fee_type_id, fee_type_det):
+            fee_name = _fee_display_name(fee_name, fee_type_id, fee_type_det)
     return {
         "fee_name": fee_name,
         "fee_short": fee_short or fee_name,
@@ -694,9 +737,10 @@ def _build_payment_ledger(
         fee_short = ""
         group = "Other"
         budget_code = None
-        if pd.notna(fid) and int(fid) in fee_lu.index:
-            f = fee_lu.loc[int(fid)]
-            fields = _fee_category_fields(f, fid, fdet, budget_map)
+        if pd.notna(fid):
+            fields = _fee_category_fields(
+                _fee_row_or_none(fee_lu, fid), fid, fdet, budget_map
+            )
             fee_name = fields["fee_name"]
             fee_short = fields["fee_short"]
             group = fields["category_group"]
@@ -717,7 +761,7 @@ def _build_payment_ledger(
             "fee_short": fee_short,
             "category_group": group,
             "budget_code": budget_code,
-            "description": str(row.get("TRANSACTION_DESC") or "")[:120],
+            "description": _clean_str(row.get("TRANSACTION_DESC"))[:120],
         })
 
     ledger: list[dict[str, Any]] = []
@@ -734,7 +778,7 @@ def _build_payment_ledger(
         fine = float(r.get("RECEIPT_FINE_AMOUNT") or 0)
         pid = int(r["PAY_TRANS_ID"]) if pd.notna(r.get("PAY_TRANS_ID")) else None
         lines = lines_by_pt.get(pid, []) if pid is not None else []
-        credits = [l for l in lines if l["account_type"] == "CREDIT"]
+        credits = [l for l in lines if l["account_type"] == "CREDIT" and l.get("fee_type_id") is not None]
         groups = sorted({l["category_group"] for l in credits if l["category_group"]})
         top_cat = ""
         if credits:
@@ -800,9 +844,10 @@ def _build_fee_allocation_ledger(
         fee_short = ""
         group = "Other"
         budget_code = None
-        if pd.notna(fid) and int(fid) in fee_lu.index:
-            f = fee_lu.loc[int(fid)]
-            fields = _fee_category_fields(f, fid, fdet, budget_map)
+        if pd.notna(fid):
+            fields = _fee_category_fields(
+                _fee_row_or_none(fee_lu, fid), fid, fdet, budget_map
+            )
             fee_name = fields["fee_name"]
             fee_short = fields["fee_short"]
             group = fields["category_group"]
