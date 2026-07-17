@@ -170,51 +170,64 @@ function initFilters() {
 
   const yearSel = document.getElementById('filter-year');
   const categoriesYearSel = document.getElementById('categories-year');
-  DATA.meta.years.forEach((y) => {
-    const o = document.createElement('option');
-    o.value = y; o.textContent = y;
-    yearSel.appendChild(o);
-    if (categoriesYearSel) {
-      const o2 = document.createElement('option');
-      o2.value = y; o2.textContent = y;
-      categoriesYearSel.appendChild(o2);
-    }
-  });
+  const fillYearOptions = (sel) => {
+    if (!sel || sel.dataset.yearsFilled) return;
+    DATA.meta.years.forEach((y) => {
+      const o = document.createElement('option');
+      o.value = String(y);
+      o.textContent = String(y);
+      sel.appendChild(o);
+    });
+    sel.dataset.yearsFilled = '1';
+  };
+  fillYearOptions(yearSel);
+  fillYearOptions(categoriesYearSel);
 
   const grpSel = document.getElementById('filter-group');
-  DATA.category_groups.forEach((g) => {
-    const o = document.createElement('option');
-    o.value = g.category_group; o.textContent = g.category_group;
-    grpSel.appendChild(o);
-  });
+  if (grpSel && !grpSel.dataset.groupsFilled) {
+    DATA.category_groups.forEach((g) => {
+      const o = document.createElement('option');
+      o.value = g.category_group; o.textContent = g.category_group;
+      grpSel.appendChild(o);
+    });
+    grpSel.dataset.groupsFilled = '1';
+  }
 
   const syncYearSelects = (value) => {
-    yearSel.value = value;
-    if (categoriesYearSel) categoriesYearSel.value = value;
+    const v = value == null || value === '' ? 'all' : String(value);
+    state.year = v;
+    if (yearSel) yearSel.value = v;
+    if (categoriesYearSel) categoriesYearSel.value = v;
   };
 
   const onChange = () => {
     state.dateFrom = from.value;
     state.dateTo = to.value;
-    state.year = yearSel.value;
-    state.group = grpSel.value;
+    state.year = yearSel?.value || state.year || 'all';
+    state.group = grpSel?.value || 'all';
     state.search = document.getElementById('filter-search').value.trim().toLowerCase();
     state.page = 1;
     state.recvPage = 1;
-    if (categoriesYearSel) categoriesYearSel.value = state.year;
+    syncYearSelects(state.year);
     renderFilterChips();
     renderAll();
   };
 
-  from.addEventListener('change', onChange);
-  to.addEventListener('change', onChange);
-  yearSel.addEventListener('change', onChange);
-  grpSel.addEventListener('change', onChange);
-  document.getElementById('filter-search').addEventListener('input', debounce(onChange, 250));
-  categoriesYearSel?.addEventListener('change', () => {
-    syncYearSelects(categoriesYearSel.value);
-    onChange();
-  });
+  if (!yearSel?.dataset.bound) {
+    from.addEventListener('change', onChange);
+    to.addEventListener('change', onChange);
+    yearSel?.addEventListener('change', () => {
+      syncYearSelects(yearSel.value);
+      onChange();
+    });
+    grpSel?.addEventListener('change', onChange);
+    document.getElementById('filter-search').addEventListener('input', debounce(onChange, 250));
+    categoriesYearSel?.addEventListener('change', () => {
+      syncYearSelects(categoriesYearSel.value);
+      onChange();
+    });
+    if (yearSel) yearSel.dataset.bound = '1';
+  }
 
   function syncCurrencyButtons() {
     document.getElementById('btn-usd')?.classList.toggle('active', state.usd);
@@ -381,9 +394,33 @@ function renderPaymentTableHeaders() {
   }).join('') + '<th class="col-actions"></th>';
 }
 
+/** Budget years active for category aggregates (explicit Year, else years touched by date range). */
+function activeCategoryYears() {
+  if (state.year !== 'all') return new Set([Number(state.year)]);
+  if (!DATA?.meta) return null;
+  const min = DATA.meta.date_min || '';
+  const max = DATA.meta.date_max || '';
+  const from = state.dateFrom || min;
+  const to = state.dateTo || max;
+  if (!from && !to) return null;
+  if (from === min && to === max) return null;
+  const y0 = Number(String(from || min).slice(0, 4));
+  const y1 = Number(String(to || max).slice(0, 4));
+  if (!Number.isFinite(y0) || !Number.isFinite(y1)) return null;
+  const years = new Set();
+  for (let y = Math.min(y0, y1); y <= Math.max(y0, y1); y += 1) years.add(y);
+  return years;
+}
+
+function rowInActiveYears(row) {
+  const years = activeCategoryYears();
+  if (!years) return true;
+  return years.has(Number(row.year));
+}
+
 function filterCategories(rows) {
-  let r = rows;
-  if (state.year !== 'all') r = r.filter((x) => x.year === Number(state.year));
+  let r = rows || [];
+  r = r.filter(rowInActiveYears);
   if (state.group !== 'all') r = r.filter((x) => x.category_group === state.group);
   return r;
 }
@@ -401,16 +438,21 @@ function updateFilterSummary(count, total, label = 'payments') {
 }
 
 function renderAll() {
-  renderKPIs();
-  renderYearlyChart();
-  renderCollectionChart();
-  renderDailyChart();
-  renderCategories();
-  renderReceivables();
-  renderRates();
-  renderYearCompare();
-  if (PAYMENTS) renderTracker();
-  if (RECEIVABLES) renderRecvTracker();
+  const steps = [
+    renderKPIs,
+    renderYearlyChart,
+    renderCollectionChart,
+    renderDailyChart,
+    renderCategories,
+    renderReceivables,
+    renderRates,
+    renderYearCompare,
+    () => { if (PAYMENTS) renderTracker(); },
+    () => { if (RECEIVABLES) renderRecvTracker(); },
+  ];
+  steps.forEach((fn) => {
+    try { fn(); } catch (err) { console.error(fn.name || 'render', err); }
+  });
 }
 
 function renderKPIs() {
@@ -942,7 +984,7 @@ function getCategoryYearlyRows(feeTypeId) {
 function getCategoryPaymentRows(feeTypeId) {
   return (DATA.payments_by_year || [])
     .filter((c) => c.FEE_TYPE_ID === feeTypeId)
-    .filter((c) => state.year === 'all' || c.year === Number(state.year))
+    .filter(rowInActiveYears)
     .filter((c) => state.group === 'all' || c.category_group === state.group)
     .sort((a, b) => a.year - b.year);
 }
@@ -1148,7 +1190,7 @@ function renderGroupBarChart() {
 
   const groups = {};
   (DATA.payments_by_year || []).forEach((c) => {
-    if (state.year !== 'all' && c.year !== Number(state.year)) return;
+    if (!rowInActiveYears(c)) return;
     if (state.group !== 'all' && c.category_group !== state.group) return;
     const g = c.category_group || 'Other';
     groups[g] = (groups[g] || 0) + (state.usd ? c.amount_usd : c.amount_lbp);
@@ -1181,10 +1223,24 @@ function renderGroupBarChart() {
   }, 80);
 }
 
+function categoryPeriodLabel() {
+  const years = activeCategoryYears();
+  if (!years) return 'all years';
+  const list = [...years].sort((a, b) => a - b);
+  if (list.length === 1) return `FY ${list[0]}`;
+  return `FY ${list[0]}–${list[list.length - 1]}`;
+}
+
 function renderCategories() {
   const items = getCategoryItems();
+  const totalAmt = items.reduce((s, r) => s + r.amount, 0);
+  const hint = document.getElementById('categories-hint');
+  if (hint) {
+    hint.innerHTML = `Showing <strong>${esc(categoryPeriodLabel())}</strong> · <strong>${items.length}</strong> categories · <strong>${fmtMoney(totalAmt, state.usd)}</strong>. Use Details → for per-year billed vs collected.`;
+  }
 
   const tbody = document.querySelector('#table-categories tbody');
+  if (!tbody) return;
   tbody.innerHTML = items.slice(0, 50).map((r) => `
     <tr data-fee-id="${r.FEE_TYPE_ID}">
       <td>${r.FEE_TYPE_ID}</td>
@@ -1209,7 +1265,7 @@ function getAnalysisGroupRows() {
     recv[g] = (recv[g] || 0) + (u ? c.amount_usd : c.amount_lbp);
   });
   (DATA.payments_by_year || []).forEach((c) => {
-    if (state.year !== 'all' && c.year !== Number(state.year)) return;
+    if (!rowInActiveYears(c)) return;
     if (state.group !== 'all' && c.category_group !== state.group) return;
     const g = c.category_group || 'Other';
     pay[g] = (pay[g] || 0) + (u ? c.amount_usd : c.amount_lbp);
