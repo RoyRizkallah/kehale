@@ -162,8 +162,14 @@
       <!-- CATEGORIES -->
       <section class="page" id="page-categories">
         <div class="card">
-          <h3>Category Breakdown</h3>
-          <p class="chart-hint">Use Details → on any row. In the drawer: filter years, then Payments → per year, then Receipt → for full payment.</p>
+          <div class="card-head">
+            <h3>Category Breakdown</h3>
+            <div class="field field-compact">
+              <label for="categories-year">Year</label>
+              <select id="categories-year"><option value="all">All</option></select>
+            </div>
+          </div>
+          <p class="chart-hint">Filter by year above (or in the top bar). Use Details → on any row for per-year billed vs collected, then Payments → and Receipt →.</p>
           <div class="table-scroll"><table class="data-table" id="table-categories">
             <thead><tr><th>ID</th><th>Category</th><th>Group</th><th class="num">Amount</th><th class="num">Lines</th><th class="col-actions"></th></tr></thead>
             <tbody></tbody>

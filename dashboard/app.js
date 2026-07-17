@@ -169,10 +169,16 @@ function initFilters() {
   state.dateTo = to.value;
 
   const yearSel = document.getElementById('filter-year');
+  const categoriesYearSel = document.getElementById('categories-year');
   DATA.meta.years.forEach((y) => {
     const o = document.createElement('option');
     o.value = y; o.textContent = y;
     yearSel.appendChild(o);
+    if (categoriesYearSel) {
+      const o2 = document.createElement('option');
+      o2.value = y; o2.textContent = y;
+      categoriesYearSel.appendChild(o2);
+    }
   });
 
   const grpSel = document.getElementById('filter-group');
@@ -182,6 +188,11 @@ function initFilters() {
     grpSel.appendChild(o);
   });
 
+  const syncYearSelects = (value) => {
+    yearSel.value = value;
+    if (categoriesYearSel) categoriesYearSel.value = value;
+  };
+
   const onChange = () => {
     state.dateFrom = from.value;
     state.dateTo = to.value;
@@ -190,6 +201,7 @@ function initFilters() {
     state.search = document.getElementById('filter-search').value.trim().toLowerCase();
     state.page = 1;
     state.recvPage = 1;
+    if (categoriesYearSel) categoriesYearSel.value = state.year;
     renderFilterChips();
     renderAll();
   };
@@ -199,6 +211,10 @@ function initFilters() {
   yearSel.addEventListener('change', onChange);
   grpSel.addEventListener('change', onChange);
   document.getElementById('filter-search').addEventListener('input', debounce(onChange, 250));
+  categoriesYearSel?.addEventListener('change', () => {
+    syncYearSelects(categoriesYearSel.value);
+    onChange();
+  });
 
   function syncCurrencyButtons() {
     document.getElementById('btn-usd')?.classList.toggle('active', state.usd);
@@ -218,7 +234,7 @@ function initFilters() {
   document.getElementById('btn-reset').addEventListener('click', () => {
     from.value = DATA.meta.date_min || '';
     to.value = DATA.meta.date_max || '';
-    yearSel.value = 'all';
+    syncYearSelects('all');
     grpSel.value = 'all';
     document.getElementById('filter-search').value = '';
     onChange();
