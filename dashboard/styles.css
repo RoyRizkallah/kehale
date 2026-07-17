@@ -373,6 +373,12 @@ body {
   font-weight: 500;
   font-variant-numeric: tabular-nums;
 }
+.data-table td.cell-clip {
+  max-width: 280px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .data-table th.num.sortable span:first-child { margin-right: 6px; margin-left: 0; }
 .badge {
   display: inline-block; padding: 2px 8px; border-radius: 20px;

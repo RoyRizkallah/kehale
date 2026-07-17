@@ -2021,7 +2021,10 @@ function filterMuniPaymentsList(list) {
     if (!inDateRange(r.date)) return false;
     if (state.year !== 'all' && r.budget_year !== Number(state.year)) return false;
     if (state.search) {
-      const hay = `${r.payment_seq_yr} ${r.beneficiary} ${r.notes} ${r.check_num} ${r.cashier} ${r.user_id}`.toLowerCase();
+      const hay = [
+        r.payment_seq_yr, r.beneficiary, r.notes, r.check_num, r.cashier, r.user_id,
+        r.budget_category, r.chapter_desc, r.section_desc, r.purpose, r.budget_code,
+      ].join(' ').toLowerCase();
       if (!hay.includes(state.search)) return false;
     }
     return true;
@@ -2032,8 +2035,9 @@ const MUNI_SORT_COLS = [
   { key: 'date', label: 'Date', numeric: false, defaultDir: 'desc' },
   { key: 'payment_seq_yr', label: 'Seq #', numeric: true, defaultDir: 'desc' },
   { key: 'beneficiary', label: 'Beneficiary', numeric: false, defaultDir: 'asc' },
+  { key: 'budget_category', label: 'Budget category', numeric: false, defaultDir: 'asc' },
+  { key: 'purpose', label: 'Purpose', numeric: false, defaultDir: 'asc' },
   { key: 'pay_type', label: 'Type', numeric: false, defaultDir: 'asc' },
-  { key: 'check_num', label: 'Check #', numeric: false, defaultDir: 'asc' },
   { key: 'amount', label: 'Amount', numeric: true, defaultDir: 'desc' },
   { key: 'budget_year', label: 'Year', numeric: true, defaultDir: 'desc' },
 ];
@@ -2044,6 +2048,8 @@ function muniSortValue(r, key) {
     case 'date': return r.date || '';
     case 'payment_seq_yr': return Number(r.payment_seq_yr) || 0;
     case 'beneficiary': return (r.beneficiary || '').toLowerCase();
+    case 'budget_category': return (r.budget_category || '').toLowerCase();
+    case 'purpose': return (r.purpose || '').toLowerCase();
     case 'pay_type': return (r.pay_type || '').toLowerCase();
     case 'check_num': return (r.check_num || '').toLowerCase();
     case 'amount': return u ? (r.amount_usd || 0) : (r.amount_lbp || 0);
@@ -2139,12 +2145,13 @@ function renderMuniPayTracker() {
       <td>${esc(r.date) || '—'}</td>
       <td class="num"><strong>${r.payment_seq_yr ?? '—'}</strong></td>
       <td>${esc(r.beneficiary) || '—'}</td>
+      <td title="${esc(r.chapter_desc || '')}${r.budget_code ? ` (${esc(r.budget_code)})` : ''}">${esc(r.budget_category) || '—'}</td>
+      <td class="cell-clip" title="${esc(r.purpose) || ''}">${esc(r.purpose) || '—'}</td>
       <td>${esc(r.pay_type_label || r.pay_type) || '—'}</td>
-      <td>${esc(r.check_num) || '—'}</td>
       <td class="num">${fmtMoney(u ? r.amount_usd : r.amount_lbp, u)}</td>
       <td class="num">${r.budget_year ?? '—'}</td>
       <td><button class="btn-link" type="button" data-action="detail" data-idx="${start + i}">Details →</button></td>
-    </tr>`).join('') || `<tr><td colspan="8" style="text-align:center;padding:32px;color:var(--muted)">${available ? 'No municipal payments match filters' : 'Export MBS_PAYMENTS to load outflows'}</td></tr>`;
+    </tr>`).join('') || `<tr><td colspan="9" style="text-align:center;padding:32px;color:var(--muted)">${available ? 'No municipal payments match filters' : 'Export MBS_PAYMENTS to load outflows'}</td></tr>`;
 
   wireDetailButtons(tbody, (btn) => openMuniPayDetail(filtered[Number(btn.dataset.idx)]));
   renderMuniPager('muni-pager-top', pages, filtered.length);
@@ -2175,12 +2182,48 @@ function openMuniPayDetail(r) {
   const u = state.usd;
   setDrawerBack(false);
   drawerContext = null;
+  const purposeLines = Array.isArray(r.purpose_lines) ? r.purpose_lines : [];
+  const rate = (r.amount_lbp && r.amount_usd) ? (r.amount_lbp / r.amount_usd) : 89500;
+  const purposeRows = purposeLines.length
+    ? purposeLines.map((l) => {
+        const lineAmt = l.amount_lbp != null
+          ? fmtMoney(u ? l.amount_lbp / rate : l.amount_lbp, u)
+          : '—';
+        return `
+        <tr>
+          <td class="num">${l.seq ?? '—'}</td>
+          <td>${esc(l.description) || '—'}</td>
+          <td class="num">${lineAmt}</td>
+        </tr>`;
+      }).join('')
+    : '';
   document.getElementById('drawer-title').textContent = 'Municipal Payment Detail';
   document.getElementById('drawer-body').innerHTML = `
     <div class="detail-section">
       <div class="detail-amount">${fmtMoney(u ? r.amount_usd : r.amount_lbp, u)}</div>
       <div style="color:var(--muted);font-size:.85rem;margin-top:4px">${esc(r.date) || '—'} · Seq #${r.payment_seq_yr ?? '—'}</div>
       <div style="color:var(--muted);font-size:.8rem;margin-top:2px">Money paid out by the municipality</div>
+    </div>
+    <div class="detail-section">
+      <h4>Budget category</h4>
+      <div class="detail-grid">
+        <div class="detail-item"><label>Code</label><span>${esc(r.budget_code) || '—'}</span></div>
+        <div class="detail-item"><label>Chapter</label><span>${esc(r.chapter_desc) || (r.chapter != null ? r.chapter : '—')}</span></div>
+        <div class="detail-item"><label>Section</label><span>${esc(r.section_desc) || (r.section != null ? r.section : '—')}</span></div>
+        <div class="detail-item"><label>Paragraph</label><span>${esc(r.paragraph_desc) || (r.paragraph != null ? r.paragraph : '—')}</span></div>
+        <div class="detail-item wide"><label>Category</label><span>${esc(r.budget_category) || '—'}</span></div>
+      </div>
+    </div>
+    <div class="detail-section">
+      <h4>Purpose</h4>
+      <div class="detail-grid">
+        <div class="detail-item wide"><label>Reserve / acceptance</label><span>${esc(r.purpose) || '—'}</span></div>
+      </div>
+      ${purposeRows ? `
+      <table class="data-table" style="margin-top:12px">
+        <thead><tr><th>#</th><th>Detail line</th><th class="num">Amount</th></tr></thead>
+        <tbody>${purposeRows}</tbody>
+      </table>` : ''}
     </div>
     <div class="detail-section">
       <h4>Payment</h4>
