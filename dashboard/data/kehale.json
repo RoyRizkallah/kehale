@@ -1,10 +1,10 @@
 {
   "meta": {
     "municipality": "Al-Kahaleh (Site 165)",
-    "receipt_count": 33356,
+    "receipt_count": 32683,
     "transaction_lines": 91268,
     "fee_categories": 97,
-    "muni_payment_count": 4757,
+    "muni_payment_count": 4756,
     "muni_payments_available": true,
     "years": [
       2004,
@@ -33,7 +33,7 @@
     ],
     "date_min": "2004-01-15",
     "date_max": "2026-06-24",
-    "unlinked_receipts": 1193,
+    "unlinked_receipts": 660,
     "semantics": {
       "receivables": "RECEIPTS cash received by the municipality (+ fee CREDIT split)",
       "fee_allocation": "MRS_PAY_TRANSACTIONS CREDIT lines (how receipts split by fee)",
@@ -198,7 +198,7 @@
     },
     {
       "year": 2005,
-      "payments_count": 1240,
+      "payments_count": 1179,
       "payments_lbp": 292745000,
       "fee_alloc_lines": 1747,
       "fee_allocated_lbp": 275762000,
@@ -214,11 +214,11 @@
       "allocation_coverage": 94.2,
       "paid_out_lbp": 202049000,
       "paid_out_usd": 134029.19,
-      "paid_out_count": 226
+      "paid_out_count": 225
     },
     {
       "year": 2006,
-      "payments_count": 1131,
+      "payments_count": 1029,
       "payments_lbp": 498144000,
       "fee_alloc_lines": 1563,
       "fee_allocated_lbp": 243172000,
@@ -238,7 +238,7 @@
     },
     {
       "year": 2007,
-      "payments_count": 1359,
+      "payments_count": 1336,
       "payments_lbp": 289710000,
       "fee_alloc_lines": 1842,
       "fee_allocated_lbp": 255755000,
@@ -258,7 +258,7 @@
     },
     {
       "year": 2008,
-      "payments_count": 1181,
+      "payments_count": 1164,
       "payments_lbp": 346591000,
       "fee_alloc_lines": 1960,
       "fee_allocated_lbp": 338511000,
@@ -278,7 +278,7 @@
     },
     {
       "year": 2009,
-      "payments_count": 1349,
+      "payments_count": 1280,
       "payments_lbp": 336514200,
       "fee_alloc_lines": 2313,
       "fee_allocated_lbp": 341448200,
@@ -298,7 +298,7 @@
     },
     {
       "year": 2010,
-      "payments_count": 1954,
+      "payments_count": 1897,
       "payments_lbp": 603670000,
       "fee_alloc_lines": 3341,
       "fee_allocated_lbp": 598736000,
@@ -318,7 +318,7 @@
     },
     {
       "year": 2011,
-      "payments_count": 1535,
+      "payments_count": 1496,
       "payments_lbp": 322666000,
       "fee_alloc_lines": 2577,
       "fee_allocated_lbp": 322666000,
@@ -338,7 +338,7 @@
     },
     {
       "year": 2012,
-      "payments_count": 1452,
+      "payments_count": 1446,
       "payments_lbp": 660371000,
       "fee_alloc_lines": 2519,
       "fee_allocated_lbp": 660371000,
@@ -358,7 +358,7 @@
     },
     {
       "year": 2013,
-      "payments_count": 1367,
+      "payments_count": 1366,
       "payments_lbp": 446754000,
       "fee_alloc_lines": 2377,
       "fee_allocated_lbp": 446943000,
@@ -378,7 +378,7 @@
     },
     {
       "year": 2014,
-      "payments_count": 1300,
+      "payments_count": 1298,
       "payments_lbp": 839936000,
       "fee_alloc_lines": 2278,
       "fee_allocated_lbp": 844196000,
@@ -398,7 +398,7 @@
     },
     {
       "year": 2015,
-      "payments_count": 1580,
+      "payments_count": 1577,
       "payments_lbp": 573097000,
       "fee_alloc_lines": 2576,
       "fee_allocated_lbp": 568648000,
@@ -418,7 +418,7 @@
     },
     {
       "year": 2016,
-      "payments_count": 1425,
+      "payments_count": 1424,
       "payments_lbp": 1453681000,
       "fee_alloc_lines": 2465,
       "fee_allocated_lbp": 1453759000,
@@ -438,7 +438,7 @@
     },
     {
       "year": 2017,
-      "payments_count": 1752,
+      "payments_count": 1703,
       "payments_lbp": 784282000,
       "fee_alloc_lines": 2834,
       "fee_allocated_lbp": 784204000,
@@ -458,7 +458,7 @@
     },
     {
       "year": 2018,
-      "payments_count": 1611,
+      "payments_count": 1593,
       "payments_lbp": 835639000,
       "fee_alloc_lines": 2790,
       "fee_allocated_lbp": 851106000,
@@ -478,7 +478,7 @@
     },
     {
       "year": 2019,
-      "payments_count": 1725,
+      "payments_count": 1688,
       "payments_lbp": 686494000,
       "fee_alloc_lines": 2970,
       "fee_allocated_lbp": 740665000,
@@ -498,7 +498,7 @@
     },
     {
       "year": 2020,
-      "payments_count": 1286,
+      "payments_count": 1234,
       "payments_lbp": 890045382,
       "fee_alloc_lines": 2079,
       "fee_allocated_lbp": 805497382,
@@ -518,7 +518,7 @@
     },
     {
       "year": 2021,
-      "payments_count": 1779,
+      "payments_count": 1724,
       "payments_lbp": 1164524000,
       "fee_alloc_lines": 3084,
       "fee_allocated_lbp": 1164524000,
@@ -538,7 +538,7 @@
     },
     {
       "year": 2022,
-      "payments_count": 2044,
+      "payments_count": 2012,
       "payments_lbp": 1763977000,
       "fee_alloc_lines": 3712,
       "fee_allocated_lbp": 1763977000,
@@ -558,7 +558,7 @@
     },
     {
       "year": 2023,
-      "payments_count": 1839,
+      "payments_count": 1837,
       "payments_lbp": 5545111000,
       "fee_alloc_lines": 3501,
       "fee_allocated_lbp": 5545111000,
@@ -578,7 +578,7 @@
     },
     {
       "year": 2024,
-      "payments_count": 1324,
+      "payments_count": 1309,
       "payments_lbp": 11130814000,
       "fee_alloc_lines": 2514,
       "fee_allocated_lbp": 11414214000,
@@ -598,7 +598,7 @@
     },
     {
       "year": 2025,
-      "payments_count": 2121,
+      "payments_count": 2114,
       "payments_lbp": 22183507000,
       "fee_alloc_lines": 5217,
       "fee_allocated_lbp": 21900107000,
@@ -618,7 +618,7 @@
     },
     {
       "year": 2026,
-      "payments_count": 1002,
+      "payments_count": 977,
       "payments_lbp": 10038446000,
       "fee_alloc_lines": 3069,
       "fee_allocated_lbp": 9984386000,
@@ -19498,7 +19498,7 @@
       "year": 2005,
       "month": "2005-02",
       "payments_lbp": 302000,
-      "count": 9,
+      "count": 8,
       "lbp_per_usd": 1507.5,
       "payments_usd": 200.33
     },
@@ -19522,7 +19522,7 @@
       "year": 2005,
       "month": "2005-05",
       "payments_lbp": 3364000,
-      "count": 44,
+      "count": 33,
       "lbp_per_usd": 1507.5,
       "payments_usd": 2231.51
     },
@@ -19530,7 +19530,7 @@
       "year": 2005,
       "month": "2005-06",
       "payments_lbp": 21018000,
-      "count": 224,
+      "count": 203,
       "lbp_per_usd": 1507.5,
       "payments_usd": 13942.29
     },
@@ -19538,7 +19538,7 @@
       "year": 2005,
       "month": "2005-07",
       "payments_lbp": 42302000,
-      "count": 387,
+      "count": 369,
       "lbp_per_usd": 1507.5,
       "payments_usd": 28061.03
     },
@@ -19546,7 +19546,7 @@
       "year": 2005,
       "month": "2005-08",
       "payments_lbp": 26368000,
-      "count": 198,
+      "count": 197,
       "lbp_per_usd": 1507.5,
       "payments_usd": 17491.21
     },
@@ -19570,7 +19570,7 @@
       "year": 2005,
       "month": "2005-11",
       "payments_lbp": 5140000,
-      "count": 75,
+      "count": 72,
       "lbp_per_usd": 1507.5,
       "payments_usd": 3409.62
     },
@@ -19578,7 +19578,7 @@
       "year": 2005,
       "month": "2005-12",
       "payments_lbp": 54742000,
-      "count": 85,
+      "count": 79,
       "lbp_per_usd": 1507.5,
       "payments_usd": 36313.1
     },
@@ -19594,7 +19594,7 @@
       "year": 2006,
       "month": "2006-01",
       "payments_lbp": 599000,
-      "count": 102,
+      "count": 18,
       "lbp_per_usd": 1507.5,
       "payments_usd": 397.35
     },
@@ -19626,7 +19626,7 @@
       "year": 2006,
       "month": "2006-05",
       "payments_lbp": 13938000,
-      "count": 63,
+      "count": 49,
       "lbp_per_usd": 1507.5,
       "payments_usd": 9245.77
     },
@@ -19650,7 +19650,7 @@
       "year": 2006,
       "month": "2006-08",
       "payments_lbp": 38702000,
-      "count": 50,
+      "count": 49,
       "lbp_per_usd": 1507.5,
       "payments_usd": 25672.97
     },
@@ -19658,7 +19658,7 @@
       "year": 2006,
       "month": "2006-09",
       "payments_lbp": 31274000,
-      "count": 81,
+      "count": 80,
       "lbp_per_usd": 1507.5,
       "payments_usd": 20745.61
     },
@@ -19666,7 +19666,7 @@
       "year": 2006,
       "month": "2006-10",
       "payments_lbp": 6379000,
-      "count": 71,
+      "count": 70,
       "lbp_per_usd": 1507.5,
       "payments_usd": 4231.51
     },
@@ -19682,7 +19682,7 @@
       "year": 2006,
       "month": "2006-12",
       "payments_lbp": 246462000,
-      "count": 40,
+      "count": 39,
       "lbp_per_usd": 1507.5,
       "payments_usd": 163490.55
     },
@@ -19714,7 +19714,7 @@
       "year": 2007,
       "month": "2007-04",
       "payments_lbp": 13275000,
-      "count": 150,
+      "count": 136,
       "lbp_per_usd": 1507.5,
       "payments_usd": 8805.97
     },
@@ -19722,7 +19722,7 @@
       "year": 2007,
       "month": "2007-05",
       "payments_lbp": 31665000,
-      "count": 254,
+      "count": 252,
       "lbp_per_usd": 1507.5,
       "payments_usd": 21004.98
     },
@@ -19730,7 +19730,7 @@
       "year": 2007,
       "month": "2007-06",
       "payments_lbp": 29865000,
-      "count": 201,
+      "count": 197,
       "lbp_per_usd": 1507.5,
       "payments_usd": 19810.95
     },
@@ -19746,7 +19746,7 @@
       "year": 2007,
       "month": "2007-08",
       "payments_lbp": 21795000,
-      "count": 146,
+      "count": 143,
       "lbp_per_usd": 1507.5,
       "payments_usd": 14457.71
     },
@@ -19802,7 +19802,7 @@
       "year": 2008,
       "month": "2008-03",
       "payments_lbp": 6301000,
-      "count": 34,
+      "count": 33,
       "lbp_per_usd": 1507.5,
       "payments_usd": 4179.77
     },
@@ -19810,7 +19810,7 @@
       "year": 2008,
       "month": "2008-04",
       "payments_lbp": 5218000,
-      "count": 70,
+      "count": 62,
       "lbp_per_usd": 1507.5,
       "payments_usd": 3461.36
     },
@@ -19818,7 +19818,7 @@
       "year": 2008,
       "month": "2008-05",
       "payments_lbp": 47676000,
-      "count": 220,
+      "count": 212,
       "lbp_per_usd": 1507.5,
       "payments_usd": 31625.87
     },
@@ -19914,7 +19914,7 @@
       "year": 2009,
       "month": "2009-05",
       "payments_lbp": 55192000,
-      "count": 82,
+      "count": 35,
       "lbp_per_usd": 1507.5,
       "payments_usd": 36611.61
     },
@@ -19922,7 +19922,7 @@
       "year": 2009,
       "month": "2009-06",
       "payments_lbp": 11717000,
-      "count": 85,
+      "count": 76,
       "lbp_per_usd": 1507.5,
       "payments_usd": 7772.47
     },
@@ -19930,7 +19930,7 @@
       "year": 2009,
       "month": "2009-07",
       "payments_lbp": 16880000,
-      "count": 157,
+      "count": 156,
       "lbp_per_usd": 1507.5,
       "payments_usd": 11197.35
     },
@@ -19938,7 +19938,7 @@
       "year": 2009,
       "month": "2009-08",
       "payments_lbp": 86845000,
-      "count": 128,
+      "count": 125,
       "lbp_per_usd": 1507.5,
       "payments_usd": 57608.62
     },
@@ -19946,7 +19946,7 @@
       "year": 2009,
       "month": "2009-09",
       "payments_lbp": 14782000,
-      "count": 148,
+      "count": 146,
       "lbp_per_usd": 1507.5,
       "payments_usd": 9805.64
     },
@@ -19962,7 +19962,7 @@
       "year": 2009,
       "month": "2009-11",
       "payments_lbp": 24913000,
-      "count": 333,
+      "count": 330,
       "lbp_per_usd": 1507.5,
       "payments_usd": 16526.04
     },
@@ -19970,7 +19970,7 @@
       "year": 2009,
       "month": "2009-12",
       "payments_lbp": 31906000,
-      "count": 165,
+      "count": 161,
       "lbp_per_usd": 1507.5,
       "payments_usd": 21164.84
     },
@@ -20002,7 +20002,7 @@
       "year": 2010,
       "month": "2010-03",
       "payments_lbp": 9104000,
-      "count": 71,
+      "count": 66,
       "lbp_per_usd": 1507.5,
       "payments_usd": 6039.14
     },
@@ -20010,7 +20010,7 @@
       "year": 2010,
       "month": "2010-04",
       "payments_lbp": 19332000,
-      "count": 72,
+      "count": 71,
       "lbp_per_usd": 1507.5,
       "payments_usd": 12823.88
     },
@@ -20018,7 +20018,7 @@
       "year": 2010,
       "month": "2010-05",
       "payments_lbp": 5646000,
-      "count": 64,
+      "count": 62,
       "lbp_per_usd": 1507.5,
       "payments_usd": 3745.27
     },
@@ -20026,7 +20026,7 @@
       "year": 2010,
       "month": "2010-06",
       "payments_lbp": 81736000,
-      "count": 777,
+      "count": 756,
       "lbp_per_usd": 1507.5,
       "payments_usd": 54219.57
     },
@@ -20042,7 +20042,7 @@
       "year": 2010,
       "month": "2010-08",
       "payments_lbp": 87774000,
-      "count": 195,
+      "count": 167,
       "lbp_per_usd": 1507.5,
       "payments_usd": 58224.88
     },
@@ -20090,7 +20090,7 @@
       "year": 2011,
       "month": "2011-02",
       "payments_lbp": 16145000,
-      "count": 95,
+      "count": 69,
       "lbp_per_usd": 1507.5,
       "payments_usd": 10709.78
     },
@@ -20098,7 +20098,7 @@
       "year": 2011,
       "month": "2011-03",
       "payments_lbp": 6276000,
-      "count": 53,
+      "count": 52,
       "lbp_per_usd": 1507.5,
       "payments_usd": 4163.18
     },
@@ -20106,7 +20106,7 @@
       "year": 2011,
       "month": "2011-04",
       "payments_lbp": 46411000,
-      "count": 298,
+      "count": 297,
       "lbp_per_usd": 1507.5,
       "payments_usd": 30786.73
     },
@@ -20114,7 +20114,7 @@
       "year": 2011,
       "month": "2011-05",
       "payments_lbp": 79255000,
-      "count": 434,
+      "count": 433,
       "lbp_per_usd": 1507.5,
       "payments_usd": 52573.8
     },
@@ -20122,7 +20122,7 @@
       "year": 2011,
       "month": "2011-06",
       "payments_lbp": 42978000,
-      "count": 200,
+      "count": 190,
       "lbp_per_usd": 1507.5,
       "payments_usd": 28509.45
     },
@@ -20202,7 +20202,7 @@
       "year": 2012,
       "month": "2012-04",
       "payments_lbp": 30653000,
-      "count": 328,
+      "count": 327,
       "lbp_per_usd": 1507.5,
       "payments_usd": 20333.67
     },
@@ -20210,7 +20210,7 @@
       "year": 2012,
       "month": "2012-05",
       "payments_lbp": 183583000,
-      "count": 342,
+      "count": 337,
       "lbp_per_usd": 1507.5,
       "payments_usd": 121779.77
     },
@@ -20306,7 +20306,7 @@
       "year": 2013,
       "month": "2013-05",
       "payments_lbp": 74411000,
-      "count": 528,
+      "count": 527,
       "lbp_per_usd": 1507.5,
       "payments_usd": 49360.53
     },
@@ -20402,7 +20402,7 @@
       "year": 2014,
       "month": "2014-04",
       "payments_lbp": 409359000,
-      "count": 381,
+      "count": 379,
       "lbp_per_usd": 1507.5,
       "payments_usd": 271548.26
     },
@@ -20498,7 +20498,7 @@
       "year": 2015,
       "month": "2015-03",
       "payments_lbp": 64914000,
-      "count": 96,
+      "count": 93,
       "lbp_per_usd": 1507.5,
       "payments_usd": 43060.7
     },
@@ -20666,7 +20666,7 @@
       "year": 2016,
       "month": "2016-12",
       "payments_lbp": 239681000,
-      "count": 54,
+      "count": 53,
       "lbp_per_usd": 1507.5,
       "payments_usd": 158992.37
     },
@@ -20714,7 +20714,7 @@
       "year": 2017,
       "month": "2017-05",
       "payments_lbp": 32715000,
-      "count": 119,
+      "count": 94,
       "lbp_per_usd": 1507.5,
       "payments_usd": 21701.49
     },
@@ -20722,7 +20722,7 @@
       "year": 2017,
       "month": "2017-06",
       "payments_lbp": 119762000,
-      "count": 447,
+      "count": 444,
       "lbp_per_usd": 1507.5,
       "payments_usd": 79444.11
     },
@@ -20730,7 +20730,7 @@
       "year": 2017,
       "month": "2017-07",
       "payments_lbp": 102851000,
-      "count": 289,
+      "count": 269,
       "lbp_per_usd": 1507.5,
       "payments_usd": 68226.2
     },
@@ -20738,7 +20738,7 @@
       "year": 2017,
       "month": "2017-08",
       "payments_lbp": 56095000,
-      "count": 167,
+      "count": 166,
       "lbp_per_usd": 1507.5,
       "payments_usd": 37210.61
     },
@@ -20794,7 +20794,7 @@
       "year": 2018,
       "month": "2018-03",
       "payments_lbp": 37912000,
-      "count": 88,
+      "count": 83,
       "lbp_per_usd": 1507.5,
       "payments_usd": 25148.92
     },
@@ -20858,7 +20858,7 @@
       "year": 2018,
       "month": "2018-11",
       "payments_lbp": 73992000,
-      "count": 118,
+      "count": 106,
       "lbp_per_usd": 1507.5,
       "payments_usd": 49082.59
     },
@@ -20866,7 +20866,7 @@
       "year": 2018,
       "month": "2018-12",
       "payments_lbp": 14275000,
-      "count": 89,
+      "count": 88,
       "lbp_per_usd": 1507.5,
       "payments_usd": 9469.32
     },
@@ -20906,7 +20906,7 @@
       "year": 2019,
       "month": "2019-03",
       "payments_lbp": 31750000,
-      "count": 216,
+      "count": 208,
       "lbp_per_usd": 1507.5,
       "payments_usd": 21061.36
     },
@@ -20914,7 +20914,7 @@
       "year": 2019,
       "month": "2019-04",
       "payments_lbp": 29363000,
-      "count": 175,
+      "count": 174,
       "lbp_per_usd": 1507.5,
       "payments_usd": 19477.94
     },
@@ -20922,7 +20922,7 @@
       "year": 2019,
       "month": "2019-05",
       "payments_lbp": 198703000,
-      "count": 356,
+      "count": 353,
       "lbp_per_usd": 1507.5,
       "payments_usd": 131809.62
     },
@@ -20930,7 +20930,7 @@
       "year": 2019,
       "month": "2019-06",
       "payments_lbp": 89588000,
-      "count": 289,
+      "count": 286,
       "lbp_per_usd": 1507.5,
       "payments_usd": 59428.19
     },
@@ -20938,7 +20938,7 @@
       "year": 2019,
       "month": "2019-07",
       "payments_lbp": 64391000,
-      "count": 180,
+      "count": 177,
       "lbp_per_usd": 1507.5,
       "payments_usd": 42713.76
     },
@@ -20954,7 +20954,7 @@
       "year": 2019,
       "month": "2019-09",
       "payments_lbp": 129976000,
-      "count": 76,
+      "count": 75,
       "lbp_per_usd": 1507.5,
       "payments_usd": 86219.57
     },
@@ -20978,7 +20978,7 @@
       "year": 2019,
       "month": "2019-12",
       "payments_lbp": 17061000,
-      "count": 64,
+      "count": 46,
       "lbp_per_usd": 1507.5,
       "payments_usd": 11317.41
     },
@@ -20994,7 +20994,7 @@
       "year": 2020,
       "month": "2020-01",
       "payments_lbp": 3013000,
-      "count": 33,
+      "count": 32,
       "lbp_per_usd": 1507.5,
       "payments_usd": 1998.67
     },
@@ -21010,7 +21010,7 @@
       "year": 2020,
       "month": "2020-03",
       "payments_lbp": 5419000,
-      "count": 28,
+      "count": 26,
       "lbp_per_usd": 1507.5,
       "payments_usd": 3594.69
     },
@@ -21026,7 +21026,7 @@
       "year": 2020,
       "month": "2020-05",
       "payments_lbp": 10681000,
-      "count": 34,
+      "count": 25,
       "lbp_per_usd": 1507.5,
       "payments_usd": 7085.24
     },
@@ -21034,7 +21034,7 @@
       "year": 2020,
       "month": "2020-06",
       "payments_lbp": 79266000,
-      "count": 171,
+      "count": 156,
       "lbp_per_usd": 1507.5,
       "payments_usd": 52581.09
     },
@@ -21042,7 +21042,7 @@
       "year": 2020,
       "month": "2020-07",
       "payments_lbp": 89977000,
-      "count": 347,
+      "count": 345,
       "lbp_per_usd": 1507.5,
       "payments_usd": 59686.24
     },
@@ -21058,7 +21058,7 @@
       "year": 2020,
       "month": "2020-09",
       "payments_lbp": 50039000,
-      "count": 162,
+      "count": 157,
       "lbp_per_usd": 1507.5,
       "payments_usd": 33193.37
     },
@@ -21066,7 +21066,7 @@
       "year": 2020,
       "month": "2020-10",
       "payments_lbp": 187078382,
-      "count": 102,
+      "count": 97,
       "lbp_per_usd": 1507.5,
       "payments_usd": 124098.43
     },
@@ -21082,7 +21082,7 @@
       "year": 2020,
       "month": "2020-12",
       "payments_lbp": 21084000,
-      "count": 86,
+      "count": 73,
       "lbp_per_usd": 1507.5,
       "payments_usd": 13986.07
     },
@@ -21106,7 +21106,7 @@
       "year": 2021,
       "month": "2021-03",
       "payments_lbp": 155811000,
-      "count": 105,
+      "count": 100,
       "lbp_per_usd": 1507.5,
       "payments_usd": 103357.21
     },
@@ -21114,7 +21114,7 @@
       "year": 2021,
       "month": "2021-04",
       "payments_lbp": 69441000,
-      "count": 66,
+      "count": 58,
       "lbp_per_usd": 1507.5,
       "payments_usd": 46063.68
     },
@@ -21122,7 +21122,7 @@
       "year": 2021,
       "month": "2021-05",
       "payments_lbp": 47537000,
-      "count": 65,
+      "count": 61,
       "lbp_per_usd": 1507.5,
       "payments_usd": 31533.67
     },
@@ -21130,7 +21130,7 @@
       "year": 2021,
       "month": "2021-06",
       "payments_lbp": 79610000,
-      "count": 206,
+      "count": 197,
       "lbp_per_usd": 1507.5,
       "payments_usd": 52809.29
     },
@@ -21154,7 +21154,7 @@
       "year": 2021,
       "month": "2021-09",
       "payments_lbp": 187699000,
-      "count": 247,
+      "count": 218,
       "lbp_per_usd": 1507.5,
       "payments_usd": 124510.12
     },
@@ -21186,7 +21186,7 @@
       "year": 2022,
       "month": "2022-01",
       "payments_lbp": 29996000,
-      "count": 151,
+      "count": 135,
       "lbp_per_usd": 1507.5,
       "payments_usd": 19897.84
     },
@@ -21194,7 +21194,7 @@
       "year": 2022,
       "month": "2022-02",
       "payments_lbp": 19820000,
-      "count": 79,
+      "count": 73,
       "lbp_per_usd": 1507.5,
       "payments_usd": 13147.6
     },
@@ -21210,7 +21210,7 @@
       "year": 2022,
       "month": "2022-04",
       "payments_lbp": 149428000,
-      "count": 75,
+      "count": 73,
       "lbp_per_usd": 1507.5,
       "payments_usd": 99123.05
     },
@@ -21250,7 +21250,7 @@
       "year": 2022,
       "month": "2022-09",
       "payments_lbp": 72515000,
-      "count": 347,
+      "count": 346,
       "lbp_per_usd": 1507.5,
       "payments_usd": 48102.82
     },
@@ -21258,7 +21258,7 @@
       "year": 2022,
       "month": "2022-10",
       "payments_lbp": 302858000,
-      "count": 295,
+      "count": 289,
       "lbp_per_usd": 1507.5,
       "payments_usd": 200900.83
     },
@@ -21266,7 +21266,7 @@
       "year": 2022,
       "month": "2022-11",
       "payments_lbp": 456618000,
-      "count": 332,
+      "count": 331,
       "lbp_per_usd": 1507.5,
       "payments_usd": 302897.51
     },
@@ -21354,7 +21354,7 @@
       "year": 2023,
       "month": "2023-10",
       "payments_lbp": 1219509000,
-      "count": 111,
+      "count": 110,
       "lbp_per_usd": 89500,
       "payments_usd": 13625.8
     },
@@ -21362,7 +21362,7 @@
       "year": 2023,
       "month": "2023-11",
       "payments_lbp": 1403459000,
-      "count": 156,
+      "count": 155,
       "lbp_per_usd": 89500,
       "payments_usd": 15681.11
     },
@@ -21394,7 +21394,7 @@
       "year": 2024,
       "month": "2024-03",
       "payments_lbp": 636431000,
-      "count": 114,
+      "count": 113,
       "lbp_per_usd": 89500,
       "payments_usd": 7110.96
     },
@@ -21402,7 +21402,7 @@
       "year": 2024,
       "month": "2024-04",
       "payments_lbp": 723233000,
-      "count": 80,
+      "count": 78,
       "lbp_per_usd": 89500,
       "payments_usd": 8080.82
     },
@@ -21426,7 +21426,7 @@
       "year": 2024,
       "month": "2024-07",
       "payments_lbp": 264100000,
-      "count": 44,
+      "count": 42,
       "lbp_per_usd": 89500,
       "payments_usd": 2950.84
     },
@@ -21434,7 +21434,7 @@
       "year": 2024,
       "month": "2024-08",
       "payments_lbp": 387070000,
-      "count": 77,
+      "count": 75,
       "lbp_per_usd": 89500,
       "payments_usd": 4324.8
     },
@@ -21442,7 +21442,7 @@
       "year": 2024,
       "month": "2024-09",
       "payments_lbp": 2433380000,
-      "count": 200,
+      "count": 195,
       "lbp_per_usd": 89500,
       "payments_usd": 27188.6
     },
@@ -21450,7 +21450,7 @@
       "year": 2024,
       "month": "2024-10",
       "payments_lbp": 1186542000,
-      "count": 164,
+      "count": 161,
       "lbp_per_usd": 89500,
       "payments_usd": 13257.45
     },
@@ -21522,7 +21522,7 @@
       "year": 2025,
       "month": "2025-06",
       "payments_lbp": 883100000,
-      "count": 168,
+      "count": 167,
       "lbp_per_usd": 89500,
       "payments_usd": 9867.04
     },
@@ -21546,7 +21546,7 @@
       "year": 2025,
       "month": "2025-09",
       "payments_lbp": 1570013000,
-      "count": 69,
+      "count": 67,
       "lbp_per_usd": 89500,
       "payments_usd": 17542.04
     },
@@ -21570,7 +21570,7 @@
       "year": 2025,
       "month": "2025-12",
       "payments_lbp": 3313440000,
-      "count": 206,
+      "count": 202,
       "lbp_per_usd": 89500,
       "payments_usd": 37021.68
     },
@@ -21578,7 +21578,7 @@
       "year": 2026,
       "month": "2026-01",
       "payments_lbp": 1870450000,
-      "count": 141,
+      "count": 140,
       "lbp_per_usd": 89500,
       "payments_usd": 20898.88
     },
@@ -21594,7 +21594,7 @@
       "year": 2026,
       "month": "2026-03",
       "payments_lbp": 1237640000,
-      "count": 114,
+      "count": 113,
       "lbp_per_usd": 89500,
       "payments_usd": 13828.38
     },
@@ -21602,7 +21602,7 @@
       "year": 2026,
       "month": "2026-04",
       "payments_lbp": 1126720000,
-      "count": 143,
+      "count": 139,
       "lbp_per_usd": 89500,
       "payments_usd": 12589.05
     },
@@ -21610,7 +21610,7 @@
       "year": 2026,
       "month": "2026-05",
       "payments_lbp": 2736460000,
-      "count": 435,
+      "count": 417,
       "lbp_per_usd": 89500,
       "payments_usd": 30574.97
     },
@@ -21618,7 +21618,7 @@
       "year": 2026,
       "month": "2026-06",
       "payments_lbp": 239150000,
-      "count": 36,
+      "count": 35,
       "lbp_per_usd": 89500,
       "payments_usd": 2672.07
     }

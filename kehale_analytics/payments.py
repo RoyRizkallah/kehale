@@ -329,8 +329,15 @@ def load_payment_data(data_dir: Path | None = None) -> dict[str, pd.DataFrame]:
     receipts["RECEIPT_FINE_AMOUNT"] = pd.to_numeric(
         receipts.get("RECEIPT_FINE_AMOUNT"), errors="coerce"
     ).fillna(0)
+    receipts["RECEIPT_NUMBER"] = pd.to_numeric(
+        receipts.get("RECEIPT_NUMBER"), errors="coerce"
+    )
     receipts["total_lbp"] = receipts["RECEIPT_AMOUNT"] + receipts["RECEIPT_FINE_AMOUNT"]
     receipts["RECEIPT_DATE"] = pd.to_datetime(receipts["RECEIPT_DATE"], errors="coerce")
+    # Drop void placeholder rows (no receipt #, zero amount) — show as 0 / nan in UI.
+    receipts = receipts[
+        ~((receipts["total_lbp"] <= 0) & (receipts["RECEIPT_NUMBER"].fillna(0) <= 0))
+    ].copy()
 
     trans = pd.read_csv(base / "MRS_PAY_TRANSACTIONS.csv")
     trans["PAY_TRANS_ID"] = pd.to_numeric(trans["PAY_TRANS_ID"], errors="coerce")
@@ -717,9 +724,13 @@ def _build_payment_ledger(
     for _, r in rec.iterrows():
         if pd.isna(r.get("RECEIPT_ID")):
             continue
+        amt = float(r["total_lbp"] or 0)
+        receipt_num = int(r["RECEIPT_NUMBER"]) if pd.notna(r.get("RECEIPT_NUMBER")) else None
+        # Skip void placeholders (amount 0 + no real receipt number).
+        if amt <= 0 and (receipt_num is None or receipt_num <= 0):
+            continue
         yr = int(r["BUDGET_YEAR"]) if pd.notna(r["BUDGET_YEAR"]) else None
         rate = float(rate_lu.get(yr, 1507.5)) if yr else 1507.5
-        amt = float(r["total_lbp"])
         fine = float(r.get("RECEIPT_FINE_AMOUNT") or 0)
         pid = int(r["PAY_TRANS_ID"]) if pd.notna(r.get("PAY_TRANS_ID")) else None
         lines = lines_by_pt.get(pid, []) if pid else []
@@ -732,13 +743,13 @@ def _build_payment_ledger(
 
         ledger.append({
             "receipt_id": int(r["RECEIPT_ID"]),
-            "receipt_number": int(r["RECEIPT_NUMBER"]) if pd.notna(r["RECEIPT_NUMBER"]) else None,
+            "receipt_number": receipt_num,
             "date": r["date"] if pd.notna(r.get("date")) else None,
             "budget_year": yr,
             "amount_lbp": round(amt, 2),
             "amount_usd": round(amt / rate, 2),
             "fine_lbp": round(fine, 2),
-            "taxpayer": str(r.get("MUKALLAF_NAME") or "").strip(),
+            "taxpayer": _clean_str(r.get("MUKALLAF_NAME")),
             "mukallaf_id": int(r["MUKALLAF_ID"]) if pd.notna(r.get("MUKALLAF_ID")) else None,
             "pay_trans_id": pid,
             "collector": _clean_str(r.get("PAY_COLLECTOR")),
@@ -841,7 +852,7 @@ def _build_fee_allocation_ledger(
             "budget_year": yr,
             "amount_lbp": round(total_lbp, 2),
             "amount_usd": round(total_lbp / rate, 2),
-            "taxpayer": str(r.get("MUKALLAF_NAME") or "").strip(),
+            "taxpayer": _clean_str(r.get("MUKALLAF_NAME")),
             "mukallaf_id": int(r["MUKALLAF_ID"]) if pd.notna(r.get("MUKALLAF_ID")) else None,
             "document_num": int(r["DOCUMENT_NUM1"]) if pd.notna(r.get("DOCUMENT_NUM1")) else None,
             "user_id": _clean_str(r.get("USER_ID")),

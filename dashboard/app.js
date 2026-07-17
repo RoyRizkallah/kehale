@@ -365,8 +365,16 @@ function inDateRange(dateStr) {
   return true;
 }
 
+function isVoidReceipt(p) {
+  const amt = Number(p?.amount_lbp) || 0;
+  const num = Number(p?.receipt_number) || 0;
+  const taxpayer = String(p?.taxpayer || '').trim().toLowerCase();
+  return amt <= 0 && num <= 0 && (!taxpayer || taxpayer === 'nan');
+}
+
 function filterPaymentsList(list) {
   return list.filter((p) => {
+    if (isVoidReceipt(p)) return false;
     if (!inDateRange(p.date)) return false;
     if (state.year !== 'all' && p.budget_year !== Number(state.year)) return false;
     if (state.group !== 'all' && !(p.category_groups || []).includes(state.group)) return false;

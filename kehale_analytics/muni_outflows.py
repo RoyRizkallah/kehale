@@ -273,12 +273,15 @@ def build_muni_payment_ledger(data_dir: Path | None = None) -> list[dict[str, An
         yr = int(r["BUDGET_YEAR"]) if pd.notna(r.get("BUDGET_YEAR")) else None
         rate = float(rate_lu.get(yr, 1507.5)) if yr else 1507.5
         amt = float(r["AMOUNT"] or 0)
+        seq = int(r["PAYMENT_SEQ_YR"]) if pd.notna(r.get("PAYMENT_SEQ_YR")) else None
+        # Skip void / empty payment shells.
+        if amt <= 0 or seq is None or seq <= 0:
+            continue
         pay_date = r.get("PAY_DATE")
         date_str = pay_date.strftime("%Y-%m-%d") if pd.notna(pay_date) else None
         if not date_str and pd.notna(r.get("ENTRY_DATE")):
             date_str = r["ENTRY_DATE"].strftime("%Y-%m-%d")
 
-        seq = int(r["PAYMENT_SEQ_YR"]) if pd.notna(r.get("PAYMENT_SEQ_YR")) else None
         accept_seq = int(r["ACCEPT_SEQ_YR"]) if pd.notna(r.get("ACCEPT_SEQ_YR")) else None
         beneficiary = (
             _clean_str(r.get("BENEFICIARY_ACCEPT"))
