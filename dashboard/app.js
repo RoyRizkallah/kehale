@@ -719,7 +719,8 @@ function renderAll() {
 }
 
 function countUnlinkedReceipts(list) {
-  return (list || []).filter((p) => !p.pay_trans_id).length;
+  // pay_trans_id can be 0 in legacy data — only null/undefined means unlinked.
+  return (list || []).filter((p) => p.pay_trans_id == null).length;
 }
 
 function renderKPIs() {

@@ -537,7 +537,7 @@ def build_dashboard_payload(data_dir: Path | None = None) -> dict[str, Any]:
     fee_allocation_ledger = _build_fee_allocation_ledger(
         trans, data["pay_trans"], fees, rates_df, budget_map
     )
-    unlinked_receipts = sum(1 for p in receipt_ledger if not p.get("pay_trans_id"))
+    unlinked_receipts = sum(1 for p in receipt_ledger if p.get("pay_trans_id") is None)
 
     from .muni_outflows import build_muni_payment_ledger, muni_payments_yearly_summary
 
@@ -733,7 +733,7 @@ def _build_payment_ledger(
         rate = float(rate_lu.get(yr, 1507.5)) if yr else 1507.5
         fine = float(r.get("RECEIPT_FINE_AMOUNT") or 0)
         pid = int(r["PAY_TRANS_ID"]) if pd.notna(r.get("PAY_TRANS_ID")) else None
-        lines = lines_by_pt.get(pid, []) if pid else []
+        lines = lines_by_pt.get(pid, []) if pid is not None else []
         credits = [l for l in lines if l["account_type"] == "CREDIT"]
         groups = sorted({l["category_group"] for l in credits if l["category_group"]})
         top_cat = ""
