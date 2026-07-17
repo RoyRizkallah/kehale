@@ -43,9 +43,10 @@
           <div class="nav-links" id="nav-links">
             <button class="nav-btn active" data-page="overview"><span class="nav-icon" aria-hidden="true">◉</span><span>Overview</span></button>
             <button class="nav-btn" data-page="year-compare"><span class="nav-icon" aria-hidden="true">▤</span><span>Year Compare</span></button>
-            <button class="nav-btn" data-page="tracker"><span class="nav-icon" aria-hidden="true">↓</span><span>Payments</span></button>
-            <button class="nav-btn" data-page="recv-tracker"><span class="nav-icon" aria-hidden="true">↑</span><span>Receivables</span></button>
-            <button class="nav-btn" data-page="categories"><span class="nav-icon" aria-hidden="true">☰</span><span>Categories</span></button>
+            <button class="nav-btn" data-page="tracker"><span class="nav-icon" aria-hidden="true">↑</span><span>Receivables</span></button>
+            <button class="nav-btn" data-page="recv-tracker"><span class="nav-icon" aria-hidden="true">☰</span><span>Fee Split</span></button>
+            <button class="nav-btn" data-page="muni-pay"><span class="nav-icon" aria-hidden="true">↓</span><span>Payments</span></button>
+            <button class="nav-btn" data-page="categories"><span class="nav-icon" aria-hidden="true">▦</span><span>Categories</span></button>
             <button class="nav-btn" data-page="receivables"><span class="nav-icon" aria-hidden="true">◫</span><span>Analysis</span></button>
             <button class="nav-btn" data-page="rates"><span class="nav-icon" aria-hidden="true">⇄</span><span>Rates</span></button>
           </div>
@@ -73,7 +74,7 @@
             </div>
             <div class="field field-compact field-search-compact">
               <label for="filter-search">Search</label>
-              <input type="search" id="filter-search" placeholder="Receipt, taxpayer…" />
+              <input type="search" id="filter-search" placeholder="Receipt, taxpayer, beneficiary…" />
             </div>
           </div>
           <div class="filter-toolbar-actions">
@@ -96,10 +97,10 @@
       <section class="page active" id="page-overview">
         <div class="kpi-row" id="kpis"></div>
         <div class="grid-2">
-          <div class="card"><h3>Receivables vs Payments by Year</h3><div id="chart-yearly" class="chart"></div></div>
-          <div class="card"><h3>Collection Rate</h3><p class="chart-hint">Share of billed receivables collected as payments each year. Green ≥100%, amber 90–99%, red &lt;90%. Values above 100% mean more was collected than billed that year (prior-year balances, fines, or timing). Dashed line = 100% target.</p><div id="chart-collection" class="chart"></div></div>
+          <div class="card"><h3>Received vs Paid Out by Year</h3><p class="chart-hint">Receivables = cash received (RECEIPTS). Payments = municipal outflows (MBS_PAYMENTS). Fee categories apply only to money in.</p><div id="chart-yearly" class="chart"></div></div>
+          <div class="card"><h3>Fee Split Coverage</h3><p class="chart-hint">Fee CREDIT lines ÷ cash received. Near 100% means receipt journals balance.</p><div id="chart-collection" class="chart"></div></div>
         </div>
-        <div class="card"><h3>Daily Collections (filtered period)</h3><div id="chart-daily" class="chart"></div></div>
+        <div class="card"><h3>Daily Amounts Received (filtered period)</h3><div id="chart-daily" class="chart"></div></div>
       </section>
 
       <!-- YEAR COMPARE -->
@@ -107,7 +108,7 @@
         <div class="kpi-row compact" id="year-compare-kpis"></div>
         <div class="card">
           <h3>Year-by-Year Comparison</h3>
-          <p class="chart-hint">One row per fiscal year — receivables billed, payments collected, collection rate, and gap. Respects currency toggle and category group filter. Click column headers to sort.</p>
+          <p class="chart-hint">One row per fiscal year — amounts received, paid out, and fee-split coverage. Click column headers to sort.</p>
           <div class="table-scroll table-scroll-tall">
             <table class="data-table sortable-table" id="table-year-compare">
               <thead><tr><!-- headers rendered by app.js --></tr></thead>
@@ -116,15 +117,15 @@
             </table>
           </div>
         </div>
-        <div class="card"><h3>Collection Rate by Year</h3><div id="chart-year-compare" class="chart"></div></div>
+        <div class="card"><h3>Allocation Coverage by Year</h3><div id="chart-year-compare" class="chart"></div></div>
       </section>
 
-      <!-- PAYMENT TRACKER -->
+      <!-- RECEIVABLES = money received (receipts) -->
       <section class="page" id="page-tracker">
         <div class="kpi-row compact" id="tracker-kpis"></div>
         <div class="card">
           <div class="card-head">
-            <h3>All Payments <span class="muted" id="tracker-count"></span></h3>
+            <h3>All Receivables (Received) <span class="muted" id="tracker-count"></span></h3>
             <div class="pager" id="pager-top"></div>
           </div>
           <div class="table-scroll">
@@ -139,12 +140,12 @@
         </div>
       </section>
 
-      <!-- RECEIVABLES TRACKER -->
+      <!-- FEE SPLIT of receivables -->
       <section class="page" id="page-recv-tracker">
         <div class="kpi-row compact" id="recv-kpis"></div>
         <div class="card">
           <div class="card-head">
-            <h3>All Receivable Charges <span class="muted" id="recv-count"></span></h3>
+            <h3>Fee Split of Receivables <span class="muted" id="recv-count"></span></h3>
             <div class="pager" id="recv-pager-top"></div>
           </div>
           <div class="table-scroll">
@@ -159,17 +160,38 @@
         </div>
       </section>
 
-      <!-- CATEGORIES -->
+
+      <!-- MUNICIPAL PAYMENTS = money paid out -->
+      <section class="page" id="page-muni-pay">
+        <div class="kpi-row compact" id="muni-pay-kpis"></div>
+        <div class="card" id="muni-pay-banner"></div>
+        <div class="card">
+          <div class="card-head">
+            <h3>Municipal Payments (Paid Out) <span class="muted" id="muni-pay-count"></span></h3>
+            <div class="pager" id="muni-pager-top"></div>
+          </div>
+          <p class="chart-hint">Money paid by the municipality (MBS_PAYMENTS) — salaries, expenses, vendors. Not taxpayer fee categories.</p>
+          <div class="table-scroll">
+            <table class="data-table sortable-table" id="muni-payments-table">
+              <thead><tr><!-- headers rendered by app.js --></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+          <div class="pager" id="muni-pager-bottom"></div>
+        </div>
+      </section>
+
+      <!-- CATEGORIES (receivable fee types) -->
       <section class="page" id="page-categories">
         <div class="card">
           <div class="card-head">
-            <h3>Category Breakdown</h3>
+            <h3>Receivable Categories</h3>
             <div class="field field-compact">
               <label for="categories-year">Year</label>
               <select id="categories-year"><option value="all">All</option></select>
             </div>
           </div>
-          <p class="chart-hint" id="categories-hint">Filter by Year above (or top bar / date range). Use Details → for per-year billed vs collected.</p>
+          <p class="chart-hint" id="categories-hint">Fee types of money received (CREDIT split of receipts). Not municipal payment/expense categories.</p>
           <div class="table-scroll"><table class="data-table" id="table-categories">
             <thead><tr><th>ID</th><th>Category</th><th>Group</th><th class="num">Amount</th><th class="num">Lines</th><th class="col-actions"></th></tr></thead>
             <tbody></tbody>
@@ -178,46 +200,46 @@
         <div class="card"><h3>Collections by Group</h3><div id="chart-group-bar" class="chart"></div></div>
       </section>
 
-      <!-- RECEIVABLES ANALYSIS -->
+      <!-- FEE ALLOCATION ANALYSIS -->
       <section class="page" id="page-receivables">
         <div class="kpi-row compact" id="analysis-kpis"></div>
         <div class="grid-2">
           <div class="card">
-            <h3>Receivables vs Payments by Group</h3>
-            <p class="chart-hint">Side-by-side billed charges and collections per category group for the current filters.</p>
+            <h3>Fee Allocation vs Payments by Group</h3>
+            <p class="chart-hint">Fee CREDIT allocation vs DEBIT-attributed payments per group. Both come from the payment journal — not assessments.</p>
             <div id="chart-analysis-group" class="chart"></div>
           </div>
           <div class="card">
-            <h3>Collection Rate by Group</h3>
-            <p class="chart-hint">Share of each group's receivables collected. Green ≥100%, amber 90–99%, red &lt;90%.</p>
+            <h3>Allocation Match by Group</h3>
+            <p class="chart-hint">Payments attributed ÷ fee allocated per group. Near 100% means CREDIT/DEBIT split aligns.</p>
             <div id="chart-analysis-rate" class="chart"></div>
           </div>
         </div>
         <div class="grid-2">
           <div class="card">
-            <h3>Top Receivable Categories</h3>
-            <p class="chart-hint">Top 15 fee types by billed amount.</p>
+            <h3>Top Fee Categories</h3>
+            <p class="chart-hint">Top 15 fee types by allocated payment amount.</p>
             <div id="chart-recv-bar" class="chart tall"></div>
           </div>
           <div class="card">
-            <h3>Outstanding Gap by Year</h3>
-            <p class="chart-hint">Receivables minus payments each fiscal year. Red = uncollected balance.</p>
+            <h3>Allocation Coverage by Year</h3>
+            <p class="chart-hint">Fee-allocated ÷ cash receipts each year (data quality, not AR outstanding).</p>
             <div id="chart-gap" class="chart tall"></div>
           </div>
         </div>
         <div class="card">
           <h3>Group Breakdown</h3>
-          <p class="chart-hint">Receivables, payments, collection rate, and gap per category group.</p>
+          <p class="chart-hint">Fee allocation vs attributed payments per category group.</p>
           <div class="table-scroll">
             <table class="data-table" id="table-analysis-groups">
               <thead>
                 <tr>
                   <th>Group</th>
-                  <th class="num">Receivables</th>
+                  <th class="num">Fees Allocated</th>
                   <th class="num">Payments</th>
-                  <th class="num">Collection %</th>
-                  <th class="num">Gap</th>
-                  <th class="num">Share of recv.</th>
+                  <th class="num">Match %</th>
+                  <th class="num">Diff</th>
+                  <th class="num">Share</th>
                 </tr>
               </thead>
               <tbody></tbody>
@@ -249,6 +271,6 @@
     <div class="drawer-body" id="drawer-body"></div>
   </aside>
 
-  <script src="app.js?v=20260717g"></script>
+  <script src="app.js?v=20260717j"></script>
 </body>
 </html>

@@ -1,4 +1,8 @@
-"""Payment & receivables analytics from municipal CSV exports."""
+"""Municipal inbound (receivables) analytics from CSV exports.
+
+Receivables (money in) = RECEIPTS + CREDIT fee allocation lines.
+Municipal payments (money out) = MBS_PAYMENTS — see muni_outflows.py.
+"""
 
 from __future__ import annotations
 
@@ -162,27 +166,34 @@ def build_dashboard_payload(data_dir: Path | None = None) -> dict[str, Any]:
     rec_yr["year"] = rec_yr["year"].astype(int)
 
     credit = trans[trans["ACCOUNT_TYPE"] == "CREDIT"]
-    recv_yr = (
+    # CREDIT totals = fee allocation of payment journals (not assessments / AR).
+    fee_yr = (
         credit.groupby("BUDGET_YEAR", as_index=False)
         .agg(
-            receivable_lines=("AMOUNT", "count"),
-            receivables_lbp=("AMOUNT", "sum"),
+            fee_alloc_lines=("AMOUNT", "count"),
+            fee_allocated_lbp=("AMOUNT", "sum"),
         )
         .rename(columns={"BUDGET_YEAR": "year"})
     )
-    recv_yr["year"] = recv_yr["year"].astype(int)
+    fee_yr["year"] = fee_yr["year"].astype(int)
 
-    yearly = rec_yr.merge(recv_yr, on="year", how="outer").fillna(0)
+    yearly = rec_yr.merge(fee_yr, on="year", how="outer").fillna(0)
     yearly = yearly.merge(rates_df[["year", "lbp_per_usd"]], on="year", how="left")
     yearly["payments_usd"] = yearly["payments_lbp"] / yearly["lbp_per_usd"]
-    yearly["receivables_usd"] = yearly["receivables_lbp"] / yearly["lbp_per_usd"]
-    yearly["gap_lbp"] = yearly["receivables_lbp"] - yearly["payments_lbp"]
-    yearly["gap_usd"] = yearly["gap_lbp"] / yearly["lbp_per_usd"]
-    yearly["collection_rate"] = (
-        (yearly["payments_lbp"] / yearly["receivables_lbp"].replace(0, pd.NA)) * 100
+    yearly["fee_allocated_usd"] = yearly["fee_allocated_lbp"] / yearly["lbp_per_usd"]
+    # Legacy keys kept for dashboard field compatibility (same values as fee_allocated_*).
+    yearly["receivable_lines"] = yearly["fee_alloc_lines"]
+    yearly["receivables_lbp"] = yearly["fee_allocated_lbp"]
+    yearly["receivables_usd"] = yearly["fee_allocated_usd"]
+    # No true AR without TAKLEEFAT — do not invent collection rate / outstanding gap.
+    yearly["gap_lbp"] = None
+    yearly["gap_usd"] = None
+    yearly["collection_rate"] = None
+    yearly["allocation_coverage"] = (
+        (yearly["fee_allocated_lbp"] / yearly["payments_lbp"].replace(0, pd.NA)) * 100
     ).round(2)
 
-    # Category breakdown (CREDIT = receivables by fee type), with rental (س)/(غ) split
+    # Category breakdown (CREDIT = fee allocation by fee type), with rental (س)/(غ) split
     credit = _annotate_fee_split(credit)
     cat = (
         credit.groupby(["BUDGET_YEAR", "FEE_TYPE_ID", "DET_KEY"], as_index=False, dropna=False)
@@ -314,11 +325,79 @@ def build_dashboard_payload(data_dir: Path | None = None) -> dict[str, Any]:
         .sort_values("total_usd", ascending=False)
     )
 
-    payment_ledger = _build_payment_ledger(receipts, trans, data["pay_trans"], fees, rates_df)
-    receivable_ledger = _build_receivable_ledger(trans, data["pay_trans"], fees, rates_df)
+    # Receipt ledger = money received (UI: Receivables). File: payments.json (legacy path).
+    receipt_ledger = _build_payment_ledger(receipts, trans, data["pay_trans"], fees, rates_df)
+    fee_allocation_ledger = _build_fee_allocation_ledger(
+        trans, data["pay_trans"], fees, rates_df
+    )
+    unlinked_receipts = sum(1 for p in receipt_ledger if not p.get("pay_trans_id"))
+
+    from .muni_outflows import build_muni_payment_ledger, muni_payments_yearly_summary
+
+    muni_payment_ledger = build_muni_payment_ledger(data_dir)
+    muni_yearly = muni_payments_yearly_summary(muni_payment_ledger, rates_df)
+    muni_by_year = {r["year"]: r for r in muni_yearly}
+    years = sorted(set(years) | {int(r["year"]) for r in muni_yearly})
 
     date_min = receipts["RECEIPT_DATE"].min()
     date_max = receipts["RECEIPT_DATE"].max()
+    if muni_payment_ledger:
+        muni_dates = [p["date"] for p in muni_payment_ledger if p.get("date")]
+        if muni_dates:
+            muni_min = min(muni_dates)
+            muni_max = max(muni_dates)
+            if not date_min or muni_min < str(date_min)[:10]:
+                date_min = pd.Timestamp(muni_min)
+            if not date_max or muni_max > str(date_max)[:10]:
+                date_max = pd.Timestamp(muni_max)
+
+    # round() would turn None into NaN; round numeric columns only.
+    yearly_out = yearly.copy()
+    yearly_out["paid_out_lbp"] = yearly_out["year"].map(
+        lambda y: muni_by_year.get(int(y), {}).get("paid_out_lbp", 0)
+    )
+    yearly_out["paid_out_usd"] = yearly_out["year"].map(
+        lambda y: muni_by_year.get(int(y), {}).get("paid_out_usd", 0)
+    )
+    yearly_out["paid_out_count"] = yearly_out["year"].map(
+        lambda y: muni_by_year.get(int(y), {}).get("paid_out_count", 0)
+    )
+    # Years that only appear in outflows
+    for row in muni_yearly:
+        if int(row["year"]) not in set(yearly_out["year"].astype(int)):
+            yearly_out = pd.concat(
+                [
+                    yearly_out,
+                    pd.DataFrame([{
+                        "year": row["year"],
+                        "payments_count": 0,
+                        "payments_lbp": 0,
+                        "fee_alloc_lines": 0,
+                        "fee_allocated_lbp": 0,
+                        "lbp_per_usd": rates_df.set_index("year")["lbp_per_usd"].get(row["year"], 1507.5),
+                        "payments_usd": 0,
+                        "fee_allocated_usd": 0,
+                        "receivable_lines": 0,
+                        "receivables_lbp": 0,
+                        "receivables_usd": 0,
+                        "gap_lbp": None,
+                        "gap_usd": None,
+                        "collection_rate": None,
+                        "allocation_coverage": None,
+                        "paid_out_lbp": row["paid_out_lbp"],
+                        "paid_out_usd": row["paid_out_usd"],
+                        "paid_out_count": row["paid_out_count"],
+                    }]),
+                ],
+                ignore_index=True,
+            )
+
+    num_cols = [
+        c for c in yearly_out.columns
+        if c not in {"gap_lbp", "gap_usd", "collection_rate", "allocation_coverage"}
+        and pd.api.types.is_numeric_dtype(yearly_out[c])
+    ]
+    yearly_out[num_cols] = yearly_out[num_cols].round(2)
 
     return {
         "meta": {
@@ -326,20 +405,39 @@ def build_dashboard_payload(data_dir: Path | None = None) -> dict[str, Any]:
             "receipt_count": int(len(receipts)),
             "transaction_lines": int(len(trans)),
             "fee_categories": int(len(fees)),
+            "muni_payment_count": int(len(muni_payment_ledger)),
+            "muni_payments_available": bool(muni_payment_ledger),
             "years": years,
-            "date_min": date_min.strftime("%Y-%m-%d") if pd.notna(date_min) else None,
-            "date_max": date_max.strftime("%Y-%m-%d") if pd.notna(date_max) else None,
+            "date_min": (
+                date_min.strftime("%Y-%m-%d")
+                if hasattr(date_min, "strftime") and pd.notna(date_min)
+                else (str(date_min)[:10] if date_min else None)
+            ),
+            "date_max": (
+                date_max.strftime("%Y-%m-%d")
+                if hasattr(date_max, "strftime") and pd.notna(date_max)
+                else (str(date_max)[:10] if date_max else None)
+            ),
+            "unlinked_receipts": unlinked_receipts,
+            "semantics": {
+                "receivables": "RECEIPTS cash received by the municipality (+ fee CREDIT split)",
+                "fee_allocation": "MRS_PAY_TRANSACTIONS CREDIT lines (how receipts split by fee)",
+                "payments": "MBS_PAYMENTS money paid out by the municipality",
+                "assessments": "TAKLEEFAT not in export",
+            },
         },
         "exchange_rates": rates_df.to_dict(orient="records"),
-        "yearly_summary": yearly.round(2).to_dict(orient="records"),
+        "yearly_summary": yearly_out.sort_values("year").to_dict(orient="records"),
         "categories_by_year": cat.round(2).to_dict(orient="records"),
         "payments_by_year": pay_cat.round(2).to_dict(orient="records"),
         "category_totals": cat_totals.round(2).to_dict(orient="records"),
         "category_groups": group_totals.round(2).to_dict(orient="records"),
         "monthly_payments": monthly.round(2).to_dict(orient="records"),
         "fee_types": fees.fillna("").to_dict(orient="records"),
-        "payment_ledger": payment_ledger,
-        "receivable_ledger": receivable_ledger,
+        # Legacy key: receipt/collections ledger → dashboard/data/payments.json
+        "payment_ledger": receipt_ledger,
+        "receivable_ledger": fee_allocation_ledger,
+        "muni_payment_ledger": muni_payment_ledger,
     }
 
 
@@ -452,13 +550,16 @@ def _build_payment_ledger(
     return ledger
 
 
-def _build_receivable_ledger(
+def _build_fee_allocation_ledger(
     trans: pd.DataFrame,
     pay_trans: pd.DataFrame,
     fees: pd.DataFrame,
     rates_df: pd.DataFrame,
 ) -> list[dict[str, Any]]:
-    """One record per pay transaction with CREDIT (charge) lines for dashboard drill-down."""
+    """One record per pay transaction with CREDIT fee-allocation lines.
+
+    These are not assessments/AR — they split cash receipts across fee types.
+    """
     pt_cols = [
         "PAY_TRANS_ID", "BUDGET_YEAR", "TRANSACTION_DATE", "MUKALLAF_NAME", "MUKALLAF_ID",
         "DOCUMENT_NUM1", "DOCUMENT_NUM2", "DOCUMENT_NUM3", "USER_ID",
@@ -526,6 +627,7 @@ def _build_receivable_ledger(
         date_str = tx_date.strftime("%Y-%m-%d") if pd.notna(tx_date) else None
 
         ledger.append({
+            "source": "payment_fee_allocation",
             "pay_trans_id": pid,
             "date": date_str,
             "budget_year": yr,
@@ -534,7 +636,7 @@ def _build_receivable_ledger(
             "taxpayer": str(r.get("MUKALLAF_NAME") or "").strip(),
             "mukallaf_id": int(r["MUKALLAF_ID"]) if pd.notna(r.get("MUKALLAF_ID")) else None,
             "document_num": int(r["DOCUMENT_NUM1"]) if pd.notna(r.get("DOCUMENT_NUM1")) else None,
-            "user_id": str(r.get("USER_ID") or ""),
+            "user_id": _clean_str(r.get("USER_ID")),
             "category_groups": groups,
             "primary_category": top_cat,
             "line_count": len(lines),

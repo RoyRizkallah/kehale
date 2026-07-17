@@ -21,10 +21,15 @@ const PLOT = {
 };
 
 let DATA = null;
+/** Receipt/collections ledger (money in) — UI: Receivables. File: payments.json */
 let PAYMENTS = null;
+/** Fee-split CREDIT ledger — UI: Fee Split. File: receivables.json */
 let RECEIVABLES = null;
+/** Municipal outflows — UI: Payments. File: muni_payments.json */
+let MUNI_PAYMENTS = null;
 let paymentsLoading = false;
 let receivablesLoading = false;
+let muniPayLoading = false;
 
 const state = {
   dateFrom: '',
@@ -37,11 +42,15 @@ const state = {
   pageSize: 50,
   recvPage: 1,
   recvPageSize: 50,
+  muniPage: 1,
+  muniPageSize: 50,
   activePage: 'overview',
   sortBy: 'date',
   sortDir: 'desc',
   recvSortBy: 'date',
   recvSortDir: 'desc',
+  muniSortBy: 'date',
+  muniSortDir: 'desc',
   yearCompareSortBy: 'year',
   yearCompareSortDir: 'desc',
 };
@@ -73,15 +82,17 @@ async function loadData() {
   const loadingText = document.querySelector('#loading div:last-child');
   const paymentsPromise = ensurePayments();
   const receivablesPromise = ensureReceivables();
+  const muniPromise = ensureMuniPayments();
 
   const res = await fetch('data/kehale.json');
   DATA = await res.json();
-  if (loadingText) loadingText.textContent = 'Loading payments & receivables…';
-  await Promise.all([paymentsPromise, receivablesPromise]);
+  if (loadingText) loadingText.textContent = 'Loading receivables & municipal payments…';
+  await Promise.all([paymentsPromise, receivablesPromise, muniPromise]);
 
   initFilters();
   initPaymentTableSort();
   initReceivableTableSort();
+  initMuniPayTableSort();
   initYearCompareSort();
   document.getElementById('loading').classList.add('hidden');
   document.getElementById('app').classList.remove('hidden');
@@ -161,6 +172,24 @@ async function ensurePayments() {
   PAYMENTS = await res.json();
   paymentsLoading = false;
   return PAYMENTS;
+}
+
+async function ensureMuniPayments() {
+  if (MUNI_PAYMENTS) return MUNI_PAYMENTS;
+  if (muniPayLoading) return new Promise((r) => {
+    const iv = setInterval(() => { if (MUNI_PAYMENTS) { clearInterval(iv); r(MUNI_PAYMENTS); } }, 200);
+  });
+  muniPayLoading = true;
+  const el = document.getElementById('muni-pay-count');
+  if (el) el.textContent = '(loading…)';
+  try {
+    const res = await fetch('data/muni_payments.json');
+    MUNI_PAYMENTS = res.ok ? await res.json() : [];
+  } catch (_) {
+    MUNI_PAYMENTS = [];
+  }
+  muniPayLoading = false;
+  return MUNI_PAYMENTS;
 }
 
 function initFilters() {
@@ -277,6 +306,7 @@ function initFilters() {
       document.getElementById('page-' + page).classList.add('active');
       if (page === 'tracker') await ensurePayments();
       if (page === 'recv-tracker' || page === 'categories') await ensureReceivables();
+      if (page === 'muni-pay') await ensureMuniPayments();
       renderAll();
       if (page === 'categories') {
         setTimeout(() => renderCategoryCharts(), 150);
@@ -501,12 +531,27 @@ function buildDateAwareYearlyRows() {
     }
   }
 
+  if (MUNI_PAYMENTS) {
+    filterMuniPaymentsList(MUNI_PAYMENTS).forEach((p) => {
+      const y = Number(p.budget_year);
+      if (!Number.isFinite(y)) return;
+      const row = ensure(y);
+      row.paid_out = (row.paid_out || 0) + (u ? (p.amount_usd || 0) : (p.amount_lbp || 0));
+      row.paid_out_count = (row.paid_out_count || 0) + 1;
+    });
+  }
+
   return Object.values(byYear).map((r) => {
     const rateRow = (DATA.yearly_summary || []).find((x) => Number(x.year) === Number(r.year));
+    const coverage = r.payments ? (r.receivables / r.payments) * 100 : 0;
     return {
       ...r,
-      gap: r.receivables - r.payments,
-      collection_rate: r.receivables ? (r.payments / r.receivables) * 100 : 0,
+      received: r.payments,
+      paid_out: r.paid_out || 0,
+      paid_out_count: r.paid_out_count || 0,
+      gap: null,
+      collection_rate: null,
+      allocation_coverage: coverage,
       lbp_per_usd: rateRow?.lbp_per_usd ?? null,
     };
   }).sort((a, b) => a.year - b.year);
@@ -544,7 +589,7 @@ function feeMetaById(feeTypeId) {
   return (DATA.fee_types || []).find((f) => Number(f.FEE_TYPE_ID) === Number(feeTypeId)) || {};
 }
 
-/** Aggregate category amounts from receivable ledger lines in the active date/year/group filters. */
+/** Aggregate category amounts from fee-allocation (CREDIT) ledger lines in active filters. */
 function aggregateCategoriesFromReceivables() {
   if (!RECEIVABLES) return null;
   const u = state.usd;
@@ -637,46 +682,56 @@ function renderAll() {
     renderYearCompare,
     () => { if (PAYMENTS) renderTracker(); },
     () => { if (RECEIVABLES) renderRecvTracker(); },
+    () => { if (MUNI_PAYMENTS != null) renderMuniPayTracker(); },
   ];
   steps.forEach((fn) => {
     try { fn(); } catch (err) { console.error(fn.name || 'render', err); }
   });
 }
 
+function countUnlinkedReceipts(list) {
+  return (list || []).filter((p) => !p.pay_trans_id).length;
+}
+
 function renderKPIs() {
   const list = PAYMENTS ? filterPaymentsList(PAYMENTS) : [];
   const u = state.usd;
-  let pay, count, recv, rate;
+  let pay, count, feeAlloc, unlinked;
 
   if (useExactDateLedgers()) {
     pay = list.reduce((s, p) => s + (u ? p.amount_usd : p.amount_lbp), 0);
     count = list.length;
-    recv = getFilteredReceivablesTotal().total;
-    rate = recv ? (pay / recv) * 100 : 0;
+    feeAlloc = getFilteredReceivablesTotal().total;
+    unlinked = countUnlinkedReceipts(list);
     updateFilterSummary(count, PAYMENTS.length);
   } else if (list.length) {
     pay = list.reduce((s, p) => s + (u ? p.amount_usd : p.amount_lbp), 0);
     count = list.length;
     const yrs = new Set(list.map((p) => p.budget_year));
     const ys = DATA.yearly_summary.filter((r) => yrs.has(r.year));
-    recv = ys.reduce((s, r) => s + (u ? r.receivables_usd : r.receivables_lbp), 0);
-    rate = recv ? (pay / recv) * 100 : 0;
+    feeAlloc = ys.reduce((s, r) => s + (u ? (r.fee_allocated_usd ?? r.receivables_usd) : (r.fee_allocated_lbp ?? r.receivables_lbp)), 0);
+    unlinked = countUnlinkedReceipts(list);
     updateFilterSummary(count, PAYMENTS.length);
   } else {
     const yr = state.year === 'all' ? null : Number(state.year);
     const rows = yr ? DATA.yearly_summary.filter((r) => r.year === yr) : DATA.yearly_summary;
     pay = rows.reduce((s, r) => s + (u ? r.payments_usd : r.payments_lbp), 0);
-    recv = rows.reduce((s, r) => s + (u ? r.receivables_usd : r.receivables_lbp), 0);
+    feeAlloc = rows.reduce((s, r) => s + (u ? (r.fee_allocated_usd ?? r.receivables_usd) : (r.fee_allocated_lbp ?? r.receivables_lbp)), 0);
     count = rows.reduce((s, r) => s + (r.payments_count || 0), 0);
-    rate = recv ? (pay / recv) * 100 : 0;
+    unlinked = DATA.meta?.unlinked_receipts ?? 0;
     updateFilterSummary(null, DATA.meta.receipt_count);
   }
 
+  const muniList = MUNI_PAYMENTS ? filterMuniPaymentsList(MUNI_PAYMENTS) : [];
+  const paidOut = muniList.reduce((s, p) => s + (u ? (p.amount_usd || 0) : (p.amount_lbp || 0)), 0);
+  const paidCount = muniList.length;
+  const muniAvailable = DATA.meta?.muni_payments_available || paidCount > 0;
+
   document.getElementById('kpis').innerHTML = `
-    <div class="kpi"><div class="kpi-label">Payments Collected</div><div class="kpi-value">${fmtMoney(pay, u)}</div><div class="kpi-sub">${count.toLocaleString()} receipts</div></div>
-    <div class="kpi green"><div class="kpi-label">Receivables Charged</div><div class="kpi-value">${fmtMoney(recv, u)}</div><div class="kpi-sub">ledger credits</div></div>
-    <div class="kpi amber"><div class="kpi-label">Collection Rate</div><div class="kpi-value">${fmtPct(rate)}</div><div class="kpi-sub">payments ÷ receivables</div></div>
-    <div class="kpi rose"><div class="kpi-label">Outstanding Gap</div><div class="kpi-value">${fmtMoney(recv - pay, u)}</div><div class="kpi-sub">receivables − payments</div></div>`;
+    <div class="kpi green"><div class="kpi-label">Received</div><div class="kpi-value">${fmtMoney(pay, u)}</div><div class="kpi-sub">${count.toLocaleString()} receipts · receivables</div></div>
+    <div class="kpi"><div class="kpi-label">Paid Out</div><div class="kpi-value">${muniAvailable ? fmtMoney(paidOut, u) : '—'}</div><div class="kpi-sub">${muniAvailable ? `${paidCount.toLocaleString()} municipal payments` : 'export MBS_PAYMENTS'}</div></div>
+    <div class="kpi amber"><div class="kpi-label">Fee Split of Received</div><div class="kpi-value">${fmtMoney(feeAlloc, u)}</div><div class="kpi-sub">CREDIT by fee type</div></div>
+    <div class="kpi rose"><div class="kpi-label">Unlinked Receipts</div><div class="kpi-value">${Number(unlinked).toLocaleString()}</div><div class="kpi-sub">no pay-trans link</div></div>`;
 }
 
 function plotly(id, traces, layout = {}) {
@@ -698,16 +753,16 @@ function renderYearlyChart() {
     ? buildDateAwareYearlyRows()
     : DATA.yearly_summary.slice().sort((a, b) => a.year - b.year).map((r) => ({
       year: r.year,
-      receivables: u ? r.receivables_usd : r.receivables_lbp,
-      payments: u ? r.payments_usd : r.payments_lbp,
+      received: u ? r.payments_usd : r.payments_lbp,
+      paid_out: u ? (r.paid_out_usd || 0) : (r.paid_out_lbp || 0),
     }));
   if (state.year !== 'all') {
     const y = Number(state.year);
     ys.splice(0, ys.length, ...ys.filter((r) => Number(r.year) === y));
   }
   plotly('chart-yearly', [
-    { x: ys.map((r) => r.year), y: ys.map((r) => r.receivables), name: 'Receivables', type: 'bar', marker: { color: '#93b4ff' } },
-    { x: ys.map((r) => r.year), y: ys.map((r) => r.payments), name: 'Payments', type: 'bar', marker: { color: BLUE } },
+    { x: ys.map((r) => r.year), y: ys.map((r) => r.received ?? r.payments), name: 'Received', type: 'bar', marker: { color: '#0d9f6e' } },
+    { x: ys.map((r) => r.year), y: ys.map((r) => r.paid_out || 0), name: 'Paid Out', type: 'bar', marker: { color: BLUE } },
   ], { barmode: 'group', yaxis: { title: u ? 'USD' : 'LBP' } });
 }
 
@@ -716,14 +771,16 @@ function renderCollectionChart() {
     ? buildDateAwareYearlyRows()
     : DATA.yearly_summary.slice().sort((a, b) => a.year - b.year).map((r) => ({
       year: r.year,
-      collection_rate: r.collection_rate,
+      allocation_coverage: r.allocation_coverage != null
+        ? r.allocation_coverage
+        : (r.payments_lbp ? ((r.fee_allocated_lbp ?? r.receivables_lbp) / r.payments_lbp) * 100 : 0),
     }));
   if (state.year !== 'all') {
     const y = Number(state.year);
     ys.splice(0, ys.length, ...ys.filter((r) => Number(r.year) === y));
   }
   const years = ys.map((r) => String(r.year));
-  const rates = ys.map((r) => Number(r.collection_rate) || 0);
+  const rates = ys.map((r) => Number(r.allocation_coverage) || 0);
   const ymax = Math.max(120, Math.ceil(Math.max(...rates, 100) / 20) * 20 + 20);
   const colors = rates.map((r) => (r >= 99.95 ? '#0d9f6e' : r >= 90 ? '#d97706' : '#dc2626'));
 
@@ -736,7 +793,7 @@ function renderCollectionChart() {
     cliponaxis: false,
     textfont: { size: 11, color: '#1a2b4a' },
     marker: { color: colors, line: { width: 0 } },
-    hovertemplate: '<b>%{x}</b><br>Collected: %{y:.1f}%<br><i>payments ÷ receivables</i><extra></extra>',
+    hovertemplate: '<b>%{x}</b><br>Coverage: %{y:.1f}%<br><i>fees allocated ÷ payments</i><extra></extra>',
   }], {
     xaxis: {
       type: 'category',
@@ -747,7 +804,7 @@ function renderCollectionChart() {
     },
     yaxis: {
       type: 'linear',
-      title: '% collected',
+      title: '% coverage',
       range: [0, ymax],
       ticksuffix: '%',
       dtick: ymax > 150 ? 50 : 25,
@@ -828,13 +885,13 @@ function renderTracker() {
   const pageRows = filtered.slice(start, start + state.pageSize);
 
   document.getElementById('tracker-kpis').innerHTML = `
-    <div class="kpi"><div class="kpi-label">Filtered Total</div><div class="kpi-value">${fmtMoney(total, u)}</div></div>
-    <div class="kpi"><div class="kpi-label">Payments</div><div class="kpi-value">${filtered.length.toLocaleString()}</div></div>
-    <div class="kpi"><div class="kpi-label">Avg Payment</div><div class="kpi-value">${fmtMoney(filtered.length ? total / filtered.length : 0, u)}</div></div>`;
+    <div class="kpi green"><div class="kpi-label">Filtered Received</div><div class="kpi-value">${fmtMoney(total, u)}</div></div>
+    <div class="kpi"><div class="kpi-label">Receipts</div><div class="kpi-value">${filtered.length.toLocaleString()}</div></div>
+    <div class="kpi"><div class="kpi-label">Avg Receipt</div><div class="kpi-value">${fmtMoney(filtered.length ? total / filtered.length : 0, u)}</div></div>`;
 
   document.getElementById('tracker-count').textContent = `(${filtered.length.toLocaleString()} records)`;
   if (state.activePage === 'tracker') {
-    updateFilterSummary(filtered.length, PAYMENTS.length, 'payments');
+    updateFilterSummary(filtered.length, PAYMENTS.length, 'receivables');
   }
 
   const tbody = document.querySelector('#payments-table tbody');
@@ -895,7 +952,7 @@ const RECEIVABLE_SORT_COLS = [
   { key: 'taxpayer', label: 'Taxpayer', numeric: false, defaultDir: 'asc' },
   { key: 'category', label: 'Category', numeric: false, defaultDir: 'asc' },
   { key: 'group', label: 'Group', numeric: false, defaultDir: 'asc' },
-  { key: 'amount', label: 'Charged', numeric: true, defaultDir: 'desc' },
+  { key: 'amount', label: 'Allocated', numeric: true, defaultDir: 'desc' },
   { key: 'budget_year', label: 'Year', numeric: true, defaultDir: 'desc' },
 ];
 
@@ -968,13 +1025,13 @@ function renderRecvTracker() {
   const pageRows = filtered.slice(start, start + state.recvPageSize);
 
   document.getElementById('recv-kpis').innerHTML = `
-    <div class="kpi green"><div class="kpi-label">Filtered Total Charged</div><div class="kpi-value">${fmtMoney(total, u)}</div></div>
-    <div class="kpi"><div class="kpi-label">Charge Records</div><div class="kpi-value">${filtered.length.toLocaleString()}</div></div>
-    <div class="kpi"><div class="kpi-label">Avg Charge</div><div class="kpi-value">${fmtMoney(filtered.length ? total / filtered.length : 0, u)}</div></div>`;
+    <div class="kpi green"><div class="kpi-label">Filtered Fees Allocated</div><div class="kpi-value">${fmtMoney(total, u)}</div></div>
+    <div class="kpi"><div class="kpi-label">Allocation Records</div><div class="kpi-value">${filtered.length.toLocaleString()}</div></div>
+    <div class="kpi"><div class="kpi-label">Avg Allocation</div><div class="kpi-value">${fmtMoney(filtered.length ? total / filtered.length : 0, u)}</div></div>`;
 
   document.getElementById('recv-count').textContent = `(${filtered.length.toLocaleString()} records)`;
   if (state.activePage === 'recv-tracker') {
-    updateFilterSummary(filtered.length, RECEIVABLES.length, 'charges');
+    updateFilterSummary(filtered.length, RECEIVABLES.length, 'fee allocations');
   }
 
   const tbody = document.querySelector('#receivables-table tbody');
@@ -990,7 +1047,7 @@ function renderRecvTracker() {
       <td class="num">${r.budget_year ?? '—'}</td>
       <td><button class="btn-link" type="button" data-action="detail" data-idx="${start + i}">Details →</button></td>
     </tr>`;
-  }).join('') || '<tr><td colspan="8" style="text-align:center;padding:32px;color:var(--muted)">No receivable charges match filters</td></tr>';
+  }).join('') || '<tr><td colspan="8" style="text-align:center;padding:32px;color:var(--muted)">No fee allocations match filters</td></tr>';
 
   wireDetailButtons(tbody, (btn) => openReceivableDetail(filtered[Number(btn.dataset.idx)]));
 
@@ -1022,11 +1079,12 @@ function openReceivableDetail(r) {
   const u = state.usd;
   setDrawerBack(false);
   drawerContext = null;
-  document.getElementById('drawer-title').textContent = 'Receivable Charge Detail';
+  document.getElementById('drawer-title').textContent = 'Fee Allocation Detail';
   document.getElementById('drawer-body').innerHTML = `
     <div class="detail-section">
       <div class="detail-amount">${fmtMoney(u ? r.amount_usd : r.amount_lbp, u)}</div>
       <div style="color:var(--muted);font-size:.85rem;margin-top:4px">${esc(r.date) || '—'} · Trans #${r.pay_trans_id}</div>
+      <div style="color:var(--muted);font-size:.8rem;margin-top:2px">Payment fee split (not an assessment)</div>
     </div>
     <div class="detail-section">
       <h4>Transaction</h4>
@@ -1050,9 +1108,9 @@ function openReceivableDetail(r) {
       <div>${(r.category_groups || []).map(badge).join(' ') || '—'}</div>
     </div>
     <div class="detail-section">
-      <h4>Charge Lines <span style="font-weight:400;color:var(--muted)">(${r.line_count} CREDIT lines)</span></h4>
+      <h4>Fee Lines <span style="font-weight:400;color:var(--muted)">(${r.line_count} CREDIT lines)</span></h4>
       <table class="lines-table">
-        <thead><tr><th>#</th><th>Category</th><th>Group</th><th class="num">Charged</th></tr></thead>
+        <thead><tr><th>#</th><th>Category</th><th>Group</th><th class="num">Allocated</th></tr></thead>
         <tbody>
           ${(r.lines || []).map((l) => `
             <tr>
@@ -1060,7 +1118,7 @@ function openReceivableDetail(r) {
               <td>${esc(l.fee_short || l.fee_name) || '—'}</td>
               <td>${l.category_group ? badge(l.category_group) : '—'}</td>
               <td class="num">${fmtMoney(u ? l.amount_usd : l.amount_lbp, u)}</td>
-            </tr>`).join('') || '<tr><td colspan="4">No charge lines</td></tr>'}
+            </tr>`).join('') || '<tr><td colspan="4">No fee lines</td></tr>'}
         </tbody>
       </table>
     </div>`;
@@ -1082,7 +1140,7 @@ function openPaymentDetail(p) {
     setDrawerBack(false);
   }
 
-  document.getElementById('drawer-title').textContent = 'Payment Detail';
+  document.getElementById('drawer-title').textContent = 'Receivable Detail';
   document.getElementById('drawer-body').innerHTML = `
     <div class="detail-section">
       <div class="detail-amount">${fmtMoney(u ? p.amount_usd : p.amount_lbp, u)}</div>
@@ -1128,8 +1186,8 @@ function openPaymentDetail(p) {
         </tbody>
       </table>
     </div>
-    ${credits.length ? `<div class="detail-section"><h4>Charge Breakdown (CREDIT)</h4>
-      <table class="lines-table"><thead><tr><th>Fee</th><th>Group</th><th class="num">Charged</th></tr></thead><tbody>
+    ${credits.length ? `<div class="detail-section"><h4>Fee Allocation (CREDIT)</h4>
+      <table class="lines-table"><thead><tr><th>Fee</th><th>Group</th><th class="num">Allocated</th></tr></thead><tbody>
       ${credits.map((l) => `<tr><td>${esc(l.fee_name)}</td><td>${badge(l.category_group)}</td><td class="num">${fmtMoney(u ? l.amount_usd : l.amount_lbp, u)}</td></tr>`).join('')}
       </tbody></table></div>` : ''}`;
 
@@ -1345,15 +1403,15 @@ function openCategoryDetail(feeTypeId, keepFilters = false, feeTypeDet = null) {
       <h4>Summary</h4>
       <div class="detail-grid">
         <div class="detail-item"><label>Group</label><span>${badge(meta.category_group)}</span></div>
-        <div class="detail-item"><label>Collected</label><span>${fmtMoney(totalPay, u)}</span></div>
-        <div class="detail-item"><label>Collection rate</label><span>${fmtPct(rate)}</span></div>
+        <div class="detail-item"><label>Attributed payments</label><span>${fmtMoney(totalPay, u)}</span></div>
+        <div class="detail-item"><label>Match rate</label><span>${fmtPct(rate)}</span></div>
         <div class="detail-item"><label>Years shown</label><span>${yearRows.length.toLocaleString()} / ${allYears.length}</span></div>
       </div>
     </div>
     <div class="detail-section">
       <h4>Per year <span style="font-weight:400;color:var(--muted)">— use Payments → for detail</span></h4>
       <table class="lines-table">
-        <thead><tr><th>Year</th><th class="num">Receivables</th><th class="num">Collected</th><th class="num">Rate</th><th class="num">Lines</th><th></th></tr></thead>
+        <thead><tr><th>Year</th><th class="num">Fees Allocated</th><th class="num">Payments</th><th class="num">Match</th><th class="num">Lines</th><th></th></tr></thead>
         <tbody>
           ${yearRows.length ? yearRows.map((r) => {
             const yrRate = r.recv ? (r.pay / r.recv) * 100 : 0;
@@ -1419,14 +1477,14 @@ function renderCategoryYearPayments(feeTypeId, year, feeTypeDet = null) {
     ${drawerFiltersHtml([], 'payments')}
     <div class="detail-section">
       <div class="detail-amount">${fmtMoney(collected, u)}</div>
-      <div style="color:var(--muted);font-size:.85rem;margin-top:4px">Collected in ${year} · ${payments.length.toLocaleString()} payment(s)</div>
+      <div style="color:var(--muted);font-size:.85rem;margin-top:4px">Allocated in ${year} · ${payments.length.toLocaleString()} payment(s)</div>
     </div>
     <div class="detail-section">
       <h4>${year} totals</h4>
       <div class="detail-grid">
-        <div class="detail-item"><label>Receivables</label><span>${fmtMoney(recv, u)}</span></div>
-        <div class="detail-item"><label>Collected (category)</label><span>${fmtMoney(collected, u)}</span></div>
-        <div class="detail-item"><label>Rate</label><span>${fmtPct(recv ? (collected / recv) * 100 : 0)}</span></div>
+        <div class="detail-item"><label>Fees Allocated</label><span>${fmtMoney(recv, u)}</span></div>
+        <div class="detail-item"><label>Attributed payments</label><span>${fmtMoney(collected, u)}</span></div>
+        <div class="detail-item"><label>Match</label><span>${fmtPct(recv ? (collected / recv) * 100 : 0)}</span></div>
       </div>
     </div>
     <div class="detail-section">
@@ -1539,7 +1597,7 @@ async function renderCategories() {
   const totalAmt = items.reduce((s, r) => s + r.amount, 0);
   const hint = document.getElementById('categories-hint');
   if (hint) {
-    hint.innerHTML = `Showing <strong>${esc(categoryPeriodLabel())}</strong> (exact date filter) · <strong>${items.length}</strong> categories · <strong>${fmtMoney(totalAmt, state.usd)}</strong>. Use Details → for per-year billed vs collected.`;
+    hint.innerHTML = `Showing <strong>${esc(categoryPeriodLabel())}</strong> (exact date filter) · <strong>${items.length}</strong> categories · <strong>${fmtMoney(totalAmt, state.usd)}</strong> fee allocation. Use Details → for per-year split.`;
   }
 
   const tbody = document.querySelector('#table-categories tbody');
@@ -1608,13 +1666,20 @@ function getFilteredYearlyRows() {
     return rows;
   }
   const u = state.usd;
-  let rows = DATA.yearly_summary.map((r) => ({
-    year: r.year,
-    receivables: u ? r.receivables_usd : r.receivables_lbp,
-    payments: u ? r.payments_usd : r.payments_lbp,
-    gap: u ? r.gap_usd : r.gap_lbp,
-    collection_rate: r.collection_rate,
-  }));
+  let rows = DATA.yearly_summary.map((r) => {
+    const payments = u ? r.payments_usd : r.payments_lbp;
+    const fees = u ? (r.fee_allocated_usd ?? r.receivables_usd) : (r.fee_allocated_lbp ?? r.receivables_lbp);
+    return {
+      year: r.year,
+      receivables: fees,
+      payments,
+      gap: null,
+      collection_rate: null,
+      allocation_coverage: r.allocation_coverage != null
+        ? r.allocation_coverage
+        : (payments ? (fees / payments) * 100 : 0),
+    };
+  });
   if (state.year !== 'all') rows = rows.filter((r) => r.year === Number(state.year));
   return rows;
 }
@@ -1624,22 +1689,24 @@ function renderReceivables() {
   const groupRows = getAnalysisGroupRows();
   const totalRecv = groupRows.reduce((s, r) => s + r.receivables, 0);
   const totalPay = groupRows.reduce((s, r) => s + r.payments, 0);
-  const totalGap = totalRecv - totalPay;
+  const totalDiff = totalRecv - totalPay;
   const totalRate = totalRecv ? (totalPay / totalRecv) * 100 : 0;
-  const worstGroup = groupRows.filter((r) => r.receivables > 0).sort((a, b) => a.rate - b.rate)[0];
+  const unlinked = PAYMENTS
+    ? countUnlinkedReceipts(filterPaymentsList(PAYMENTS))
+    : (DATA.meta?.unlinked_receipts ?? 0);
 
   const kpiEl = document.getElementById('analysis-kpis');
   if (kpiEl) {
     kpiEl.innerHTML = `
-      <div class="kpi green"><div class="kpi-label">Receivables Billed</div><div class="kpi-value">${fmtMoney(totalRecv, u)}</div><div class="kpi-sub">${groupRows.length} groups</div></div>
-      <div class="kpi"><div class="kpi-label">Payments Collected</div><div class="kpi-value">${fmtMoney(totalPay, u)}</div><div class="kpi-sub">matched to filters</div></div>
-      <div class="kpi amber"><div class="kpi-label">Overall Collection</div><div class="kpi-value">${fmtPct(totalRate)}</div><div class="kpi-sub">payments ÷ receivables</div></div>
-      <div class="kpi rose"><div class="kpi-label">Total Gap</div><div class="kpi-value">${fmtMoney(totalGap, u)}</div><div class="kpi-sub">${worstGroup ? `lowest: ${esc(worstGroup.group)} (${fmtPct(worstGroup.rate)})` : 'uncollected balance'}</div></div>`;
+      <div class="kpi green"><div class="kpi-label">Fees Allocated</div><div class="kpi-value">${fmtMoney(totalRecv, u)}</div><div class="kpi-sub">${groupRows.length} groups</div></div>
+      <div class="kpi"><div class="kpi-label">Payments Attributed</div><div class="kpi-value">${fmtMoney(totalPay, u)}</div><div class="kpi-sub">by fee group</div></div>
+      <div class="kpi amber"><div class="kpi-label">Overall Match</div><div class="kpi-value">${fmtPct(totalRate)}</div><div class="kpi-sub">payments ÷ fees allocated</div></div>
+      <div class="kpi rose"><div class="kpi-label">Unlinked Receipts</div><div class="kpi-value">${Number(unlinked).toLocaleString()}</div><div class="kpi-sub">diff ${fmtMoney(totalDiff, u)}</div></div>`;
   }
 
   const groups = groupRows.map((r) => r.group);
   plotly('chart-analysis-group', [
-    { x: groups, y: groupRows.map((r) => r.receivables), name: 'Receivables', type: 'bar', marker: { color: '#93b4ff' } },
+    { x: groups, y: groupRows.map((r) => r.receivables), name: 'Fees Allocated', type: 'bar', marker: { color: '#93b4ff' } },
     { x: groups, y: groupRows.map((r) => r.payments), name: 'Payments', type: 'bar', marker: { color: BLUE } },
   ], {
     barmode: 'group',
@@ -1655,9 +1722,9 @@ function renderReceivables() {
     type: 'bar',
     orientation: 'h',
     marker: { color: rates.slice().reverse().map((r) => (r >= 99.95 ? '#0d9f6e' : r >= 90 ? '#d97706' : '#dc2626')) },
-    hovertemplate: '<b>%{y}</b><br>Collected: %{x:.1f}%<extra></extra>',
+    hovertemplate: '<b>%{y}</b><br>Match: %{x:.1f}%<extra></extra>',
   }], {
-    xaxis: { title: '% collected', range: [0, Math.max(120, Math.ceil(Math.max(...rates, 100) / 20) * 20)] },
+    xaxis: { title: '% match', range: [0, Math.max(120, Math.ceil(Math.max(...rates, 100) / 20) * 20)] },
     margin: { t: 20, r: 16, b: 48, l: 140 },
     shapes: [{
       type: 'line', xref: 'x', yref: 'paper', x0: 100, x1: 100, y0: 0, y1: 1,
@@ -1678,12 +1745,13 @@ function renderReceivables() {
   }], { margin: { l: 160, t: 20, r: 16, b: 48 }, xaxis: { title: u ? 'USD' : 'LBP' } });
 
   const ys = getFilteredYearlyRows().sort((a, b) => a.year - b.year);
+  const coverages = ys.map((r) => Number(r.allocation_coverage) || 0);
   plotly('chart-gap', [{
-    x: ys.map((r) => r.year), y: ys.map((r) => r.gap),
+    x: ys.map((r) => r.year), y: coverages,
     type: 'bar',
-    marker: { color: ys.map((r) => (r.gap >= 0 ? '#fca5a5' : '#86efac')) },
-    hovertemplate: '<b>%{x}</b><br>Gap: %{y:,.0f}<extra></extra>',
-  }], { yaxis: { title: u ? 'USD gap' : 'LBP gap' }, xaxis: { type: 'category' } });
+    marker: { color: coverages.map((c) => (c >= 99.95 ? '#0d9f6e' : c >= 90 ? '#d97706' : '#dc2626')) },
+    hovertemplate: '<b>%{x}</b><br>Coverage: %{y:.1f}%<extra></extra>',
+  }], { yaxis: { title: '% coverage', ticksuffix: '%' }, xaxis: { type: 'category' } });
 
   const tbody = document.querySelector('#table-analysis-groups tbody');
   const tfoot = document.getElementById('analysis-groups-totals');
@@ -1702,12 +1770,12 @@ function renderReceivables() {
     }).join('') || '<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--muted)">No data for current filters</td></tr>';
   }
   if (tfoot) {
-    const gapCls = totalGap >= 0 ? 'gap-pos' : 'gap-neg';
+    const gapCls = totalDiff >= 0 ? 'gap-pos' : 'gap-neg';
     tfoot.innerHTML = `<td><strong>Total</strong></td>
       <td class="num"><strong>${fmtMoney(totalRecv, u)}</strong></td>
       <td class="num"><strong>${fmtMoney(totalPay, u)}</strong></td>
       <td class="num">${ratePill(totalRate)}</td>
-      <td class="num ${gapCls}"><strong>${fmtMoney(totalGap, u)}</strong></td>
+      <td class="num ${gapCls}"><strong>${fmtMoney(totalDiff, u)}</strong></td>
       <td class="num"><strong>100%</strong></td>`;
   }
 
@@ -1737,12 +1805,12 @@ function renderRates() {
 
 const YEAR_COMPARE_COLS = [
   { key: 'year', label: 'Year', numeric: true, defaultDir: 'desc' },
-  { key: 'receivables', label: 'Receivables', numeric: true, defaultDir: 'desc' },
-  { key: 'payments', label: 'Payments', numeric: true, defaultDir: 'desc' },
-  { key: 'collection_rate', label: 'Collection %', numeric: true, defaultDir: 'desc' },
-  { key: 'gap', label: 'Gap', numeric: true, defaultDir: 'desc' },
+  { key: 'payments', label: 'Received', numeric: true, defaultDir: 'desc' },
+  { key: 'paid_out', label: 'Paid Out', numeric: true, defaultDir: 'desc' },
+  { key: 'receivables', label: 'Fee Split', numeric: true, defaultDir: 'desc' },
+  { key: 'allocation_coverage', label: 'Split %', numeric: true, defaultDir: 'desc' },
   { key: 'payments_count', label: 'Receipts', numeric: true, defaultDir: 'desc' },
-  { key: 'receivable_lines', label: 'Charge lines', numeric: true, defaultDir: 'desc' },
+  { key: 'paid_out_count', label: 'Pay outs', numeric: true, defaultDir: 'desc' },
   { key: 'lbp_per_usd', label: 'LBP / USD', numeric: true, defaultDir: 'desc' },
 ];
 
@@ -1763,16 +1831,23 @@ function getYearCompareRows() {
   let rows;
 
   if (state.group === 'all') {
-    rows = DATA.yearly_summary.map((r) => ({
-      year: r.year,
-      receivables: u ? r.receivables_usd : r.receivables_lbp,
-      payments: u ? r.payments_usd : r.payments_lbp,
-      gap: u ? r.gap_usd : r.gap_lbp,
-      collection_rate: r.collection_rate,
-      payments_count: r.payments_count || 0,
-      receivable_lines: r.receivable_lines || 0,
-      lbp_per_usd: r.lbp_per_usd,
-    }));
+    rows = DATA.yearly_summary.map((r) => {
+      const payments = u ? r.payments_usd : r.payments_lbp;
+      const fees = u ? (r.fee_allocated_usd ?? r.receivables_usd) : (r.fee_allocated_lbp ?? r.receivables_lbp);
+      return {
+        year: r.year,
+        receivables: fees,
+        payments,
+        paid_out: u ? (r.paid_out_usd || 0) : (r.paid_out_lbp || 0),
+        paid_out_count: r.paid_out_count || 0,
+        allocation_coverage: r.allocation_coverage != null
+          ? r.allocation_coverage
+          : (payments ? (fees / payments) * 100 : 0),
+        payments_count: r.payments_count || 0,
+        receivable_lines: r.fee_alloc_lines || r.receivable_lines || 0,
+        lbp_per_usd: r.lbp_per_usd,
+      };
+    });
   } else {
     const recvByYear = {};
     filterCategories(DATA.categories_by_year).forEach((c) => {
@@ -1798,8 +1873,7 @@ function getYearCompareRows() {
         year,
         receivables: recv,
         payments: pay,
-        gap: recv - pay,
-        collection_rate: recv ? (pay / recv) * 100 : 0,
+        allocation_coverage: pay ? (recv / pay) * 100 : 0,
         payments_count: payByYear[year]?.line_count || 0,
         receivable_lines: recvByYear[year]?.receivable_lines || 0,
         lbp_per_usd: rateRow?.lbp_per_usd || recvByYear[year]?.lbp_per_usd,
@@ -1860,41 +1934,42 @@ function renderYearCompare() {
 
   const totalRecv = rows.reduce((s, r) => s + r.receivables, 0);
   const totalPay = rows.reduce((s, r) => s + r.payments, 0);
-  const totalGap = totalRecv - totalPay;
-  const totalRate = totalRecv ? (totalPay / totalRecv) * 100 : 0;
+  const totalCoverage = totalPay ? (totalRecv / totalPay) * 100 : 0;
 
+  const totalPaid = rows.reduce((s, r) => s + (r.paid_out || 0), 0);
   document.getElementById('year-compare-kpis').innerHTML = `
     <div class="kpi"><div class="kpi-label">Years</div><div class="kpi-value">${rows.length}</div></div>
-    <div class="kpi green"><div class="kpi-label">Total Receivables</div><div class="kpi-value">${fmtMoney(totalRecv, u)}</div></div>
-    <div class="kpi"><div class="kpi-label">Total Payments</div><div class="kpi-value">${fmtMoney(totalPay, u)}</div></div>
-    <div class="kpi amber"><div class="kpi-label">Overall Rate</div><div class="kpi-value">${fmtPct(totalRate)}</div></div>`;
+    <div class="kpi green"><div class="kpi-label">Total Received</div><div class="kpi-value">${fmtMoney(totalPay, u)}</div></div>
+    <div class="kpi"><div class="kpi-label">Total Paid Out</div><div class="kpi-value">${fmtMoney(totalPaid, u)}</div></div>
+    <div class="kpi amber"><div class="kpi-label">Fee Split</div><div class="kpi-value">${fmtMoney(totalRecv, u)}</div></div>`;
 
   const tbody = document.querySelector('#table-year-compare tbody');
   tbody.innerHTML = rows.map((r) => {
-    const gapCls = r.gap >= 0 ? 'gap-pos' : 'gap-neg';
+    const cov = r.allocation_coverage != null
+      ? r.allocation_coverage
+      : (r.payments ? (r.receivables / r.payments) * 100 : 0);
     return `<tr>
       <td><strong>${r.year}</strong></td>
-      <td class="num">${fmtMoney(r.receivables, u)}</td>
       <td class="num">${fmtMoney(r.payments, u)}</td>
-      <td class="num">${ratePill(r.collection_rate)}</td>
-      <td class="num ${gapCls}">${fmtMoney(r.gap, u)}</td>
+      <td class="num">${fmtMoney(r.paid_out || 0, u)}</td>
+      <td class="num">${fmtMoney(r.receivables, u)}</td>
+      <td class="num">${ratePill(cov)}</td>
       <td class="num">${(r.payments_count || 0).toLocaleString()}</td>
-      <td class="num">${(r.receivable_lines || 0).toLocaleString()}</td>
+      <td class="num">${(r.paid_out_count || 0).toLocaleString()}</td>
       <td class="num">${r.lbp_per_usd ? Number(r.lbp_per_usd).toLocaleString() : '—'}</td>
     </tr>`;
   }).join('') || '<tr><td colspan="8" style="text-align:center;padding:32px;color:var(--muted)">No years match filters</td></tr>';
 
   const tfoot = document.getElementById('year-compare-totals');
   if (tfoot) {
-    const gapCls = totalGap >= 0 ? 'gap-pos' : 'gap-neg';
     tfoot.innerHTML = `
       <td><strong>Total</strong></td>
-      <td class="num">${fmtMoney(totalRecv, u)}</td>
       <td class="num">${fmtMoney(totalPay, u)}</td>
-      <td class="num">${ratePill(totalRate)}</td>
-      <td class="num ${gapCls}">${fmtMoney(totalGap, u)}</td>
+      <td class="num">${fmtMoney(totalPaid, u)}</td>
+      <td class="num">${fmtMoney(totalRecv, u)}</td>
+      <td class="num">${ratePill(totalCoverage)}</td>
       <td class="num">${rows.reduce((s, r) => s + (r.payments_count || 0), 0).toLocaleString()}</td>
-      <td class="num">${rows.reduce((s, r) => s + (r.receivable_lines || 0), 0).toLocaleString()}</td>
+      <td class="num">${rows.reduce((s, r) => s + (r.paid_out_count || 0), 0).toLocaleString()}</td>
       <td class="num">—</td>`;
   }
 
@@ -1909,7 +1984,11 @@ function renderYearCompare() {
   }
 
   const chartRows = [...rows].sort((a, b) => a.year - b.year);
-  const rates = chartRows.map((r) => Number(r.collection_rate) || 0);
+  const rates = chartRows.map((r) => Number(
+    r.allocation_coverage != null
+      ? r.allocation_coverage
+      : (r.payments ? (r.receivables / r.payments) * 100 : 0)
+  ) || 0);
   const ymax = Math.max(120, Math.ceil(Math.max(...rates, 100) / 20) * 20 + 20);
   const years = chartRows.map((r) => String(r.year));
   plotlyFresh('chart-year-compare', [{
@@ -1917,10 +1996,10 @@ function renderYearCompare() {
     y: rates,
     type: 'bar',
     marker: { color: rates.map((r) => (r >= 99.95 ? '#0d9f6e' : r >= 90 ? '#d97706' : '#dc2626')) },
-    hovertemplate: '<b>%{x}</b><br>Collected: %{y:.1f}%<extra></extra>',
+    hovertemplate: '<b>%{x}</b><br>Coverage: %{y:.1f}%<extra></extra>',
   }], {
     xaxis: { type: 'category', categoryorder: 'array', categoryarray: years, title: 'Year' },
-    yaxis: { title: '% collected', range: [0, ymax], ticksuffix: '%' },
+    yaxis: { title: '% coverage', range: [0, ymax], ticksuffix: '%' },
     shapes: [{
       type: 'line', xref: 'paper', yref: 'y', x0: 0, x1: 1, y0: 100, y1: 100,
       line: { color: '#94a3b8', width: 2, dash: 'dash' },
@@ -1933,3 +2012,193 @@ function renderYearCompare() {
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeDrawer(); });
 
 initAuth();
+
+
+/* —— Municipal payments (money out / MBS_PAYMENTS) —— */
+
+function filterMuniPaymentsList(list) {
+  return (list || []).filter((r) => {
+    if (!inDateRange(r.date)) return false;
+    if (state.year !== 'all' && r.budget_year !== Number(state.year)) return false;
+    if (state.search) {
+      const hay = `${r.payment_seq_yr} ${r.beneficiary} ${r.notes} ${r.check_num} ${r.cashier} ${r.user_id}`.toLowerCase();
+      if (!hay.includes(state.search)) return false;
+    }
+    return true;
+  });
+}
+
+const MUNI_SORT_COLS = [
+  { key: 'date', label: 'Date', numeric: false, defaultDir: 'desc' },
+  { key: 'payment_seq_yr', label: 'Seq #', numeric: true, defaultDir: 'desc' },
+  { key: 'beneficiary', label: 'Beneficiary', numeric: false, defaultDir: 'asc' },
+  { key: 'pay_type', label: 'Type', numeric: false, defaultDir: 'asc' },
+  { key: 'check_num', label: 'Check #', numeric: false, defaultDir: 'asc' },
+  { key: 'amount', label: 'Amount', numeric: true, defaultDir: 'desc' },
+  { key: 'budget_year', label: 'Year', numeric: true, defaultDir: 'desc' },
+];
+
+function muniSortValue(r, key) {
+  const u = state.usd;
+  switch (key) {
+    case 'date': return r.date || '';
+    case 'payment_seq_yr': return Number(r.payment_seq_yr) || 0;
+    case 'beneficiary': return (r.beneficiary || '').toLowerCase();
+    case 'pay_type': return (r.pay_type || '').toLowerCase();
+    case 'check_num': return (r.check_num || '').toLowerCase();
+    case 'amount': return u ? (r.amount_usd || 0) : (r.amount_lbp || 0);
+    case 'budget_year': return Number(r.budget_year) || 0;
+    default: return '';
+  }
+}
+
+function sortMuniPaymentsList(list) {
+  const col = MUNI_SORT_COLS.find((c) => c.key === state.muniSortBy);
+  if (!col) return list;
+  const mul = state.muniSortDir === 'asc' ? 1 : -1;
+  return [...list].sort((a, b) => {
+    const va = muniSortValue(a, col.key);
+    const vb = muniSortValue(b, col.key);
+    if (col.numeric) return (va - vb) * mul;
+    return String(va).localeCompare(String(vb), undefined, { sensitivity: 'base' }) * mul;
+  });
+}
+
+function initMuniPayTableSort() {
+  const thead = document.querySelector('#muni-payments-table thead');
+  if (!thead || thead.dataset.sortInit) return;
+  thead.dataset.sortInit = '1';
+  thead.addEventListener('click', (e) => {
+    const th = e.target.closest('th[data-sort]');
+    if (!th) return;
+    const key = th.dataset.sort;
+    if (state.muniSortBy === key) {
+      state.muniSortDir = state.muniSortDir === 'asc' ? 'desc' : 'asc';
+    } else {
+      state.muniSortBy = key;
+      const col = MUNI_SORT_COLS.find((c) => c.key === key);
+      state.muniSortDir = col?.defaultDir || 'asc';
+    }
+    state.muniPage = 1;
+    renderMuniPayTracker();
+  });
+}
+
+function renderMuniPayTableHeaders() {
+  const row = document.querySelector('#muni-payments-table thead tr');
+  if (!row) return;
+  row.innerHTML = MUNI_SORT_COLS.map((c) => {
+    const active = state.muniSortBy === c.key;
+    const arrow = active ? (state.muniSortDir === 'asc' ? '▲' : '▼') : '⇅';
+    const cls = `sortable${c.numeric ? ' num' : ''}${active ? ' active' : ''}`;
+    return `<th class="${cls}" data-sort="${c.key}" title="Sort by ${c.label}"><span>${c.label}</span><span class="sort-icon">${arrow}</span></th>`;
+  }).join('') + '<th class="col-actions"></th>';
+}
+
+function renderMuniPayTracker() {
+  const banner = document.getElementById('muni-pay-banner');
+  const available = (MUNI_PAYMENTS && MUNI_PAYMENTS.length) || DATA?.meta?.muni_payments_available;
+  if (banner) {
+    if (!available) {
+      banner.innerHTML = `<p class="chart-hint" style="margin:0;padding:8px 0">No municipal outflow data loaded. Export <strong>MBS_PAYMENTS.csv</strong> (and optionally <strong>MBS_PAY_ORDER.csv</strong>) into <code>municipal_analysis/</code>, then run <code>python scripts/build_dashboard_json.py</code>.</p>`;
+      banner.classList.remove('hidden');
+    } else {
+      banner.innerHTML = '';
+      banner.classList.add('hidden');
+    }
+  }
+
+  if (!MUNI_PAYMENTS) return;
+  renderMuniPayTableHeaders();
+  const filtered = sortMuniPaymentsList(filterMuniPaymentsList(MUNI_PAYMENTS));
+  const u = state.usd;
+  const total = filtered.reduce((s, r) => s + (u ? r.amount_usd : r.amount_lbp), 0);
+  const pages = Math.max(1, Math.ceil(filtered.length / state.muniPageSize) || 1);
+  if (state.muniPage > pages) state.muniPage = pages;
+  const start = (state.muniPage - 1) * state.muniPageSize;
+  const pageRows = filtered.slice(start, start + state.muniPageSize);
+
+  const kpis = document.getElementById('muni-pay-kpis');
+  if (kpis) {
+    kpis.innerHTML = `
+      <div class="kpi"><div class="kpi-label">Filtered Paid Out</div><div class="kpi-value">${filtered.length ? fmtMoney(total, u) : '—'}</div></div>
+      <div class="kpi"><div class="kpi-label">Payment Records</div><div class="kpi-value">${filtered.length.toLocaleString()}</div></div>
+      <div class="kpi"><div class="kpi-label">Avg Payment</div><div class="kpi-value">${filtered.length ? fmtMoney(total / filtered.length, u) : '—'}</div></div>`;
+  }
+
+  const countEl = document.getElementById('muni-pay-count');
+  if (countEl) countEl.textContent = `(${filtered.length.toLocaleString()} records)`;
+  if (state.activePage === 'muni-pay') {
+    updateFilterSummary(filtered.length, MUNI_PAYMENTS.length, 'municipal payments');
+  }
+
+  const tbody = document.querySelector('#muni-payments-table tbody');
+  if (!tbody) return;
+  tbody.innerHTML = pageRows.map((r, i) => `
+    <tr>
+      <td>${esc(r.date) || '—'}</td>
+      <td class="num"><strong>${r.payment_seq_yr ?? '—'}</strong></td>
+      <td>${esc(r.beneficiary) || '—'}</td>
+      <td>${esc(r.pay_type) || '—'}</td>
+      <td>${esc(r.check_num) || '—'}</td>
+      <td class="num">${fmtMoney(u ? r.amount_usd : r.amount_lbp, u)}</td>
+      <td class="num">${r.budget_year ?? '—'}</td>
+      <td><button class="btn-link" type="button" data-action="detail" data-idx="${start + i}">Details →</button></td>
+    </tr>`).join('') || `<tr><td colspan="8" style="text-align:center;padding:32px;color:var(--muted)">${available ? 'No municipal payments match filters' : 'Export MBS_PAYMENTS to load outflows'}</td></tr>`;
+
+  wireDetailButtons(tbody, (btn) => openMuniPayDetail(filtered[Number(btn.dataset.idx)]));
+  renderMuniPager('muni-pager-top', pages, filtered.length);
+  renderMuniPager('muni-pager-bottom', pages, filtered.length);
+}
+
+function renderMuniPager(id, pages, total) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.innerHTML = `
+    <button type="button" id="${id}-prev" ${state.muniPage <= 1 ? 'disabled' : ''}>← Prev</button>
+    <span>Page ${state.muniPage} / ${pages} (${total.toLocaleString()} total)</span>
+    <button type="button" id="${id}-next" ${state.muniPage >= pages ? 'disabled' : ''}>Next →</button>
+    <select id="${id}-size" style="padding:4px 8px;border-radius:6px;border:1px solid var(--border)">
+      ${[25, 50, 100, 200].map((n) => `<option value="${n}" ${n === state.muniPageSize ? 'selected' : ''}>${n}/page</option>`).join('')}
+    </select>`;
+  document.getElementById(`${id}-prev`)?.addEventListener('click', () => { state.muniPage--; renderMuniPayTracker(); });
+  document.getElementById(`${id}-next`)?.addEventListener('click', () => { state.muniPage++; renderMuniPayTracker(); });
+  document.getElementById(`${id}-size`)?.addEventListener('change', (e) => {
+    state.muniPageSize = Number(e.target.value);
+    state.muniPage = 1;
+    renderMuniPayTracker();
+  });
+}
+
+function openMuniPayDetail(r) {
+  if (!r) return;
+  const u = state.usd;
+  setDrawerBack(false);
+  drawerContext = null;
+  document.getElementById('drawer-title').textContent = 'Municipal Payment Detail';
+  document.getElementById('drawer-body').innerHTML = `
+    <div class="detail-section">
+      <div class="detail-amount">${fmtMoney(u ? r.amount_usd : r.amount_lbp, u)}</div>
+      <div style="color:var(--muted);font-size:.85rem;margin-top:4px">${esc(r.date) || '—'} · Seq #${r.payment_seq_yr ?? '—'}</div>
+      <div style="color:var(--muted);font-size:.8rem;margin-top:2px">Money paid out by the municipality</div>
+    </div>
+    <div class="detail-section">
+      <h4>Payment</h4>
+      <div class="detail-grid">
+        <div class="detail-item"><label>Seq / Year</label><span>${r.payment_seq_yr ?? '—'} / ${r.budget_year ?? '—'}</span></div>
+        <div class="detail-item"><label>Pay Type</label><span>${esc(r.pay_type) || '—'}</span></div>
+        <div class="detail-item"><label>Check #</label><span>${esc(r.check_num) || '—'}</span></div>
+        <div class="detail-item"><label>Cashier</label><span>${esc(r.cashier) || '—'}</span></div>
+        <div class="detail-item"><label>User</label><span>${esc(r.user_id) || '—'}</span></div>
+        <div class="detail-item"><label>Paragraph</label><span>${r.paragraph ?? '—'}</span></div>
+      </div>
+    </div>
+    <div class="detail-section">
+      <h4>Beneficiary</h4>
+      <div class="detail-grid">
+        <div class="detail-item wide"><label>Name</label><span>${esc(r.beneficiary) || '—'}</span></div>
+        ${r.notes ? `<div class="detail-item wide"><label>Notes</label><span>${esc(r.notes)}</span></div>` : ''}
+      </div>
+    </div>`;
+  showDrawer();
+}
