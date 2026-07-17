@@ -2139,7 +2139,7 @@ function renderMuniPayTracker() {
       <td>${esc(r.date) || '—'}</td>
       <td class="num"><strong>${r.payment_seq_yr ?? '—'}</strong></td>
       <td>${esc(r.beneficiary) || '—'}</td>
-      <td>${esc(r.pay_type) || '—'}</td>
+      <td>${esc(r.pay_type_label || r.pay_type) || '—'}</td>
       <td>${esc(r.check_num) || '—'}</td>
       <td class="num">${fmtMoney(u ? r.amount_usd : r.amount_lbp, u)}</td>
       <td class="num">${r.budget_year ?? '—'}</td>
@@ -2186,11 +2186,12 @@ function openMuniPayDetail(r) {
       <h4>Payment</h4>
       <div class="detail-grid">
         <div class="detail-item"><label>Seq / Year</label><span>${r.payment_seq_yr ?? '—'} / ${r.budget_year ?? '—'}</span></div>
-        <div class="detail-item"><label>Pay Type</label><span>${esc(r.pay_type) || '—'}</span></div>
+        <div class="detail-item"><label>Pay Type</label><span>${esc(r.pay_type_label || r.pay_type) || '—'}</span></div>
         <div class="detail-item"><label>Check #</label><span>${esc(r.check_num) || '—'}</span></div>
+        <div class="detail-item"><label>Accept #</label><span>${r.accept_seq_yr ?? '—'}</span></div>
         <div class="detail-item"><label>Cashier</label><span>${esc(r.cashier) || '—'}</span></div>
-        <div class="detail-item"><label>User</label><span>${esc(r.user_id) || '—'}</span></div>
-        <div class="detail-item"><label>Paragraph</label><span>${r.paragraph ?? '—'}</span></div>
+        <div class="detail-item"><label>Expense auth</label><span>${esc(r.expense_auth_by) || '—'}</span></div>
+        <div class="detail-item"><label>Pay auth</label><span>${esc(r.pay_auth_by) || '—'}</span></div>
       </div>
     </div>
     <div class="detail-section">

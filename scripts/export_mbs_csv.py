@@ -1,4 +1,4 @@
-"""Export MBS_PAYMENTS / MBS_PAY_ORDER from local Docker Oracle to CSV."""
+"""Export municipal payment tables from local Docker Oracle to CSV."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -26,6 +26,16 @@ QUERIES = {
                PAY_TYPE, CHECK_NUM, CASHIER, CASHING_DATE, PRINTED, USER_ID,
                TRANS_DATE, ACTIVE, INACTIVE_REASON, INACTIVE_DATE
         FROM MBSSMALL.MBS_PAY_ORDER
+    """,
+    "MBS_ACCEPTANCES.csv": """
+        SELECT BALADIEH_INTID, BUDGET_YEAR, ACCEPT_SEQ_YR, ACCEPT_SEQ,
+               ACCEPT_DATE, BENEFICIARY, EMPLOYEE, ACTIVE
+        FROM MBSSMALL.MBS_ACCEPTANCES
+    """,
+    "MBS_CASH_DETAIL.csv": """
+        SELECT BALADIEH_INTID, BUDGET_YEAR, CASH_SEQ, CASH_TYPE, PAYMENT_SEQ_YR,
+               DTL_AMOUNT, CHECK_NUM, CHECK_DATE, CHECK_PAYOR, BANK_CODE
+        FROM MBSSMALL.MBS_CASH_DETAIL
     """,
 }
 

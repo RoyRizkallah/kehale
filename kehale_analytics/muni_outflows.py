@@ -1,6 +1,8 @@
 """Municipal outflow payments (money paid BY the municipality).
 
-Source: MBS_PAYMENTS (+ optional MBS_PAY_ORDER for beneficiary).
+Source: MBS_PAYMENTS
+  + MBS_ACCEPTANCES (beneficiary via ACCEPT_SEQ_YR)
+  + optional MBS_PAY_ORDER / MBS_CASH_DETAIL (check #)
 Not taxpayer fee collections (RECEIPTS / FEE_TYPES).
 """
 
@@ -13,6 +15,13 @@ import pandas as pd
 
 from .exchange_rates import resolve_rates
 from .payments import DATA_DIR, RATES_BDL, _clean_str
+
+PAY_TYPE_LABELS = {
+    "H": "Cash/transfer",
+    "C": "Cheque",
+    "Q": "Cheque",
+    "K": "Cheque",
+}
 
 
 def _read_csv_optional(path: Path) -> pd.DataFrame:
@@ -28,12 +37,15 @@ def build_muni_payment_ledger(data_dir: Path | None = None) -> list[dict[str, An
     if pay.empty:
         return []
 
+    accept = _read_csv_optional(base / "MBS_ACCEPTANCES.csv")
     orders = _read_csv_optional(base / "MBS_PAY_ORDER.csv")
+    cash = _read_csv_optional(base / "MBS_CASH_DETAIL.csv")
 
     pay = pay.copy()
     pay["BUDGET_YEAR"] = pd.to_numeric(pay.get("BUDGET_YEAR"), errors="coerce")
     pay["AMOUNT"] = pd.to_numeric(pay.get("AMOUNT"), errors="coerce").fillna(0)
     pay["PAYMENT_SEQ_YR"] = pd.to_numeric(pay.get("PAYMENT_SEQ_YR"), errors="coerce")
+    pay["ACCEPT_SEQ_YR"] = pd.to_numeric(pay.get("ACCEPT_SEQ_YR"), errors="coerce")
     pay["PAY_DATE"] = pd.to_datetime(pay.get("PAY_DATE"), errors="coerce")
     if "ENTRY_DATE" in pay.columns:
         pay["ENTRY_DATE"] = pd.to_datetime(pay["ENTRY_DATE"], errors="coerce")
@@ -41,17 +53,52 @@ def build_muni_payment_ledger(data_dir: Path | None = None) -> list[dict[str, An
         inactive = pay["ACTIVE"].astype(str).str.upper().isin(["N", "0", "FALSE"])
         pay = pay[~inactive]
 
+    # Primary beneficiary source: acceptances linked by ACCEPT_SEQ_YR.
+    if not accept.empty:
+        accept = accept.copy()
+        accept["BUDGET_YEAR"] = pd.to_numeric(accept.get("BUDGET_YEAR"), errors="coerce")
+        accept["ACCEPT_SEQ_YR"] = pd.to_numeric(accept.get("ACCEPT_SEQ_YR"), errors="coerce")
+        keep = [c for c in ["BUDGET_YEAR", "ACCEPT_SEQ_YR", "BENEFICIARY"] if c in accept.columns]
+        accept = accept[keep].drop_duplicates(["BUDGET_YEAR", "ACCEPT_SEQ_YR"])
+        accept = accept.rename(columns={"BENEFICIARY": "BENEFICIARY_ACCEPT"})
+        pay = pay.merge(accept, on=["BUDGET_YEAR", "ACCEPT_SEQ_YR"], how="left")
+
+    # Fallback: rare treasury pay-orders keyed by PAYMENT_SEQ_YR.
     if not orders.empty:
         orders = orders.copy()
         orders["BUDGET_YEAR"] = pd.to_numeric(orders.get("BUDGET_YEAR"), errors="coerce")
         orders["PAYMENT_SEQ_YR"] = pd.to_numeric(orders.get("PAYMENT_SEQ_YR"), errors="coerce")
         keep = [
             c
-            for c in ["BUDGET_YEAR", "PAYMENT_SEQ_YR", "BENEFICIARY", "NOTES"]
+            for c in ["BUDGET_YEAR", "PAYMENT_SEQ_YR", "BENEFICIARY", "NOTES", "CHECK_NUM"]
             if c in orders.columns
         ]
         orders = orders[keep].drop_duplicates(["BUDGET_YEAR", "PAYMENT_SEQ_YR"])
+        orders = orders.rename(
+            columns={
+                "BENEFICIARY": "BENEFICIARY_ORDER",
+                "CHECK_NUM": "CHECK_NUM_ORDER",
+            }
+        )
         pay = pay.merge(orders, on=["BUDGET_YEAR", "PAYMENT_SEQ_YR"], how="left")
+
+    # Cheque details (when PAY_TYPE is cheque / cash detail exists).
+    if not cash.empty and "PAYMENT_SEQ_YR" in cash.columns:
+        cash = cash.copy()
+        cash["BUDGET_YEAR"] = pd.to_numeric(cash.get("BUDGET_YEAR"), errors="coerce")
+        cash["PAYMENT_SEQ_YR"] = pd.to_numeric(cash.get("PAYMENT_SEQ_YR"), errors="coerce")
+        cash["CHECK_NUM"] = cash.get("CHECK_NUM")
+        # Prefer first non-null check per payment.
+        agg_map: dict[str, tuple[str, str]] = {"CHECK_NUM_CASH": ("CHECK_NUM", "first")}
+        if "CHECK_PAYOR" in cash.columns:
+            agg_map["CHECK_PAYOR"] = ("CHECK_PAYOR", "first")
+        cash = (
+            cash.dropna(subset=["PAYMENT_SEQ_YR"])
+            .sort_values(["BUDGET_YEAR", "PAYMENT_SEQ_YR"])
+            .groupby(["BUDGET_YEAR", "PAYMENT_SEQ_YR"], as_index=False)
+            .agg(**agg_map)
+        )
+        pay = pay.merge(cash, on=["BUDGET_YEAR", "PAYMENT_SEQ_YR"], how="left")
 
     years = sorted(pay["BUDGET_YEAR"].dropna().astype(int).unique().tolist())
     rates_df = resolve_rates(
@@ -77,18 +124,34 @@ def build_muni_payment_ledger(data_dir: Path | None = None) -> list[dict[str, An
             date_str = r["ENTRY_DATE"].strftime("%Y-%m-%d")
 
         seq = int(r["PAYMENT_SEQ_YR"]) if pd.notna(r.get("PAYMENT_SEQ_YR")) else None
+        accept_seq = int(r["ACCEPT_SEQ_YR"]) if pd.notna(r.get("ACCEPT_SEQ_YR")) else None
+        beneficiary = (
+            _clean_str(r.get("BENEFICIARY_ACCEPT"))
+            or _clean_str(r.get("BENEFICIARY_ORDER"))
+            or _clean_str(r.get("CHECK_PAYOR"))
+        )
+        check_num = (
+            _clean_str(r.get("CHECK_NUM"))
+            or _clean_str(r.get("CHECK_NUM_CASH"))
+            or _clean_str(r.get("CHECK_NUM_ORDER"))
+        )
+        pay_type = _clean_str(r.get("PAY_TYPE"))
         ledger.append({
             "source": "muni_outflow",
             "payment_seq_yr": seq,
+            "accept_seq_yr": accept_seq,
             "date": date_str,
             "budget_year": yr,
             "amount_lbp": round(amt, 2),
             "amount_usd": round(amt / rate, 2),
-            "pay_type": _clean_str(r.get("PAY_TYPE")),
-            "check_num": _clean_str(r.get("CHECK_NUM")),
+            "pay_type": pay_type,
+            "pay_type_label": PAY_TYPE_LABELS.get(pay_type, pay_type or "—"),
+            "check_num": check_num,
             "cashier": _clean_str(r.get("CASHIER")),
-            "beneficiary": _clean_str(r.get("BENEFICIARY")) if "BENEFICIARY" in r.index else "",
-            "notes": _clean_str(r.get("NOTES")) if "NOTES" in r.index else "",
+            "beneficiary": beneficiary,
+            "notes": _clean_str(r.get("NOTES")),
+            "expense_auth_by": _clean_str(r.get("EXPENSE_AUTH_BY")),
+            "pay_auth_by": _clean_str(r.get("PAY_AUTH_BY")),
             "user_id": _clean_str(r.get("USER_ID")),
             "paragraph": int(r["PARAGRAPH"]) if pd.notna(r.get("PARAGRAPH")) else None,
         })
