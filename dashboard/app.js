@@ -36,6 +36,7 @@ const state = {
   dateTo: '',
   year: 'all',
   group: 'all',
+  category: 'all',
   search: '',
   usd: true,
   page: 1,
@@ -226,6 +227,8 @@ function initFilters() {
     grpSel.dataset.groupsFilled = '1';
   }
 
+  const catSel = document.getElementById('filter-category');
+
   const syncYearSelects = (value) => {
     const v = value == null || value === '' ? 'all' : String(value);
     state.year = v;
@@ -238,10 +241,13 @@ function initFilters() {
     state.dateTo = to.value;
     state.year = yearSel?.value || state.year || 'all';
     state.group = grpSel?.value || 'all';
+    state.category = catSel?.value || 'all';
     state.search = document.getElementById('filter-search').value.trim().toLowerCase();
     state.page = 1;
     state.recvPage = 1;
+    state.muniPage = 1;
     syncYearSelects(state.year);
+    refreshCategoryOptions();
     renderFilterChips();
     renderAll();
   };
@@ -254,6 +260,7 @@ function initFilters() {
       onChange();
     });
     grpSel?.addEventListener('change', onChange);
+    catSel?.addEventListener('change', onChange);
     document.getElementById('filter-search').addEventListener('input', debounce(onChange, 250));
     categoriesYearSel?.addEventListener('change', () => {
       syncYearSelects(categoriesYearSel.value);
@@ -282,6 +289,8 @@ function initFilters() {
     to.value = DATA.meta.date_max || '';
     syncYearSelects('all');
     grpSel.value = 'all';
+    if (catSel) catSel.value = 'all';
+    state.category = 'all';
     document.getElementById('filter-search').value = '';
     onChange();
   });
@@ -308,6 +317,7 @@ function initFilters() {
       if (page === 'tracker') await ensurePayments();
       if (page === 'recv-tracker' || page === 'categories') await ensureReceivables();
       if (page === 'muni-pay' || page === 'categories') await ensureMuniPayments();
+      refreshCategoryOptions();
       renderAll();
       if (page === 'categories') {
         setTimeout(() => renderCategoryCharts(), 150);
@@ -329,12 +339,14 @@ function initFilters() {
       });
       if (tab === 'payments') await ensureMuniPayments();
       if (tab === 'receivables') await ensureReceivables();
+      refreshCategoryOptions();
       await renderCategories();
       setTimeout(() => renderCategoryCharts(), 80);
     });
   });
 
   window.addEventListener('resize', debounce(resizeVisibleCharts, 150));
+  refreshCategoryOptions();
   renderFilterChips();
 }
 
@@ -348,6 +360,7 @@ function renderFilterChips() {
   if (state.dateTo && state.dateTo !== max) chips.push(`<span class="filter-chip">To ${esc(state.dateTo)}</span>`);
   if (state.year !== 'all') chips.push(`<span class="filter-chip">FY ${esc(state.year)}</span>`);
   if (state.group !== 'all') chips.push(`<span class="filter-chip">${esc(state.group)}</span>`);
+  if (state.category !== 'all') chips.push(`<span class="filter-chip">${esc(state.category)}</span>`);
   if (state.search) chips.push(`<span class="filter-chip">"${esc(state.search)}"</span>`);
   chips.push(`<span class="filter-chip chip-currency">${state.usd ? 'USD' : 'LBP'}</span>`);
   el.innerHTML = chips.length > 1 ? chips.join('') : chips.join('');
@@ -356,6 +369,124 @@ function renderFilterChips() {
 function debounce(fn, ms) {
   let t;
   return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); };
+}
+
+/** Page-aware: income categories vs expense budget categories. */
+function categoryFilterMode() {
+  if (state.activePage === 'muni-pay') return 'payments';
+  if (state.activePage === 'categories' && state.categoriesTab === 'payments') return 'payments';
+  return 'receivables';
+}
+
+function collectReceivableCategoryNames() {
+  const names = new Set();
+  const add = (n) => {
+    const s = String(n || '').trim();
+    if (s && s !== '—' && s.toLowerCase() !== 'nan') names.add(s);
+  };
+  const inScope = (date, budgetYear, categoryGroup) => {
+    if (date && !inDateRange(date)) return false;
+    if (state.year !== 'all' && Number(budgetYear) !== Number(state.year)) return false;
+    if (state.group !== 'all' && categoryGroup && categoryGroup !== state.group) return false;
+    return true;
+  };
+  if (PAYMENTS) {
+    PAYMENTS.forEach((p) => {
+      if (isVoidReceipt(p)) return;
+      if (!inScope(p.date, p.budget_year, null)) return;
+      if (state.group !== 'all' && !(p.category_groups || []).includes(state.group)) return;
+      add(p.primary_category);
+      (p.lines || []).forEach((l) => {
+        if (l.account_type !== 'CREDIT') return;
+        if (state.group !== 'all' && l.category_group !== state.group) return;
+        add(l.fee_name);
+      });
+    });
+  } else if (DATA?.payments_by_year) {
+    DATA.payments_by_year.forEach((c) => {
+      if (!rowInActiveYears(c)) return;
+      if (state.group !== 'all' && c.category_group !== state.group) return;
+      add(c.FEE_TYPE_NAME);
+    });
+  }
+  if (RECEIVABLES) {
+    RECEIVABLES.forEach((r) => {
+      if (!inScope(r.date, r.budget_year, null)) return;
+      if (state.group !== 'all' && !(r.category_groups || []).includes(state.group)) return;
+      add(r.primary_category);
+      (r.lines || []).forEach((l) => {
+        if (l.fee_type_id == null) return;
+        if (state.group !== 'all' && l.category_group !== state.group) return;
+        add(l.fee_name);
+      });
+    });
+  }
+  return [...names].sort((a, b) => a.localeCompare(b, 'ar'));
+}
+
+function collectPaymentCategoryNames() {
+  const names = new Set();
+  const add = (n) => {
+    const s = String(n || '').trim();
+    if (s && s !== '—') names.add(s);
+  };
+  (MUNI_PAYMENTS || []).forEach((r) => {
+    if (!inDateRange(r.date)) return;
+    if (state.year !== 'all' && Number(r.budget_year) !== Number(state.year)) return;
+    const group = r.chapter_desc || 'Other';
+    if (state.group !== 'all' && group !== state.group) return;
+    add(r.budget_category || r.section_desc);
+  });
+  return [...names].sort((a, b) => a.localeCompare(b, 'ar'));
+}
+
+function refreshCategoryOptions() {
+  const sel = document.getElementById('filter-category');
+  if (!sel) return;
+  const mode = categoryFilterMode();
+  const names = mode === 'payments' ? collectPaymentCategoryNames() : collectReceivableCategoryNames();
+  const prev = state.category || 'all';
+  const stillValid = prev === 'all' || names.includes(prev);
+  const next = stillValid ? prev : 'all';
+  state.category = next;
+  sel.innerHTML = '';
+  const all = document.createElement('option');
+  all.value = 'all';
+  all.textContent = 'All categories';
+  sel.appendChild(all);
+  names.forEach((name) => {
+    const o = document.createElement('option');
+    o.value = name;
+    o.textContent = name;
+    sel.appendChild(o);
+  });
+  sel.value = next;
+}
+
+function lineMatchesSelectedCategory(l) {
+  if (state.category === 'all') return true;
+  return (l.fee_name || '') === state.category || (l.fee_short || '') === state.category;
+}
+
+function receiptMatchesSelectedCategory(p) {
+  if (state.category === 'all') return true;
+  if ((p.primary_category || '') === state.category) return true;
+  return (p.lines || []).some((l) =>
+    l.account_type === 'CREDIT' && lineMatchesSelectedCategory(l)
+  );
+}
+
+function receivableMatchesSelectedCategory(r) {
+  if (state.category === 'all') return true;
+  if ((r.primary_category || '') === state.category) return true;
+  return (r.lines || []).some((l) =>
+    l.fee_type_id != null && lineMatchesSelectedCategory(l)
+  );
+}
+
+function muniMatchesSelectedCategory(r) {
+  if (state.category === 'all') return true;
+  return (r.budget_category || r.section_desc || '') === state.category;
 }
 
 function inDateRange(dateStr) {
@@ -378,6 +509,7 @@ function filterPaymentsList(list) {
     if (!inDateRange(p.date)) return false;
     if (state.year !== 'all' && p.budget_year !== Number(state.year)) return false;
     if (state.group !== 'all' && !(p.category_groups || []).includes(state.group)) return false;
+    if (!receiptMatchesSelectedCategory(p)) return false;
     if (state.search) {
       const hay = `${p.receipt_number} ${p.taxpayer} ${p.primary_category} ${p.receipt_id}`.toLowerCase();
       if (!hay.includes(state.search)) return false;
@@ -479,6 +611,12 @@ function filterCategories(rows) {
   let r = rows || [];
   r = r.filter(rowInActiveYears);
   if (state.group !== 'all') r = r.filter((x) => x.category_group === state.group);
+  if (state.category !== 'all') {
+    r = r.filter((x) =>
+      (x.FEE_TYPE_NAME || '') === state.category ||
+      (x.FEE_TYPE_SHORTNAME || '') === state.category
+    );
+  }
   return r;
 }
 
@@ -490,6 +628,7 @@ function forEachFilteredReceivableLine(fn) {
     (rec.lines || []).forEach((l) => {
       if (l.fee_type_id == null) return;
       if (state.group !== 'all' && l.category_group !== state.group) return;
+      if (!lineMatchesSelectedCategory(l)) return;
       fn(rec, l);
     });
   });
@@ -504,6 +643,7 @@ function forEachFilteredPaymentCreditLine(fn) {
     (p.lines || []).forEach((l) => {
       if (l.account_type !== 'CREDIT') return;
       if (state.group !== 'all' && l.category_group !== state.group) return;
+      if (!lineMatchesSelectedCategory(l)) return;
       fn(p, l);
     });
   });
@@ -538,7 +678,7 @@ function buildDateAwareYearlyRows() {
   }
 
   if (RECEIVABLES) {
-    if (state.group === 'all') {
+    if (state.group === 'all' && state.category === 'all') {
       filterReceivablesList(RECEIVABLES).forEach((r) => {
         const y = Number(r.budget_year);
         if (!Number.isFinite(y)) return;
@@ -588,7 +728,7 @@ function getFilteredReceivablesTotal() {
   let total = 0;
   let lines = 0;
   if (!RECEIVABLES) return { total: 0, lines: 0 };
-  if (state.group === 'all') {
+  if (state.group === 'all' && state.category === 'all') {
     filterReceivablesList(RECEIVABLES).forEach((r) => {
       total += u ? (r.amount_usd || 0) : (r.amount_lbp || 0);
       lines += r.line_count || (r.lines || []).length;
@@ -626,6 +766,7 @@ function aggregateCategoriesFromReceivables() {
     (rec.lines || []).forEach((l) => {
       if (l.fee_type_id == null) return;
       if (state.group !== 'all' && l.category_group !== state.group) return;
+      if (!lineMatchesSelectedCategory(l)) return;
       const key = lineCategoryKey(l);
       if (!key) return;
       if (!agg[key]) {
@@ -663,6 +804,7 @@ function aggregateCategoryYearlyFromReceivables(feeTypeId, feeTypeDet = null) {
     (rec.lines || []).forEach((l) => {
       if (!lineMatchesCategory(l, feeTypeId, feeTypeDet)) return;
       if (state.group !== 'all' && l.category_group !== state.group) return;
+      if (!lineMatchesSelectedCategory(l)) return;
       const y = Number(rec.budget_year);
       if (!Number.isFinite(y)) return;
       if (!byYear[y]) {
@@ -693,6 +835,7 @@ function updateFilterSummary(count, total, label = 'payments') {
   if (state.dateFrom || state.dateTo) parts.push(`<strong>${state.dateFrom || '…'}</strong> → <strong>${state.dateTo || '…'}</strong>`);
   if (state.year !== 'all') parts.push(`year <strong>${state.year}</strong>`);
   if (state.group !== 'all') parts.push(`group <strong>${esc(state.group)}</strong>`);
+  if (state.category !== 'all') parts.push(`category <strong>${esc(state.category)}</strong>`);
   if (state.search) parts.push(`search "<strong>${esc(state.search)}</strong>"`);
   const filt = count != null ? ` · showing <strong>${count.toLocaleString()}</strong> of ${total.toLocaleString()} ${label}` : '';
   el.innerHTML = (parts.length ? parts.join(' · ') : 'All data') + filt;
@@ -968,6 +1111,7 @@ function filterReceivablesList(list) {
     if (!inDateRange(r.date)) return false;
     if (state.year !== 'all' && r.budget_year !== Number(state.year)) return false;
     if (state.group !== 'all' && !(r.category_groups || []).includes(state.group)) return false;
+    if (!receivableMatchesSelectedCategory(r)) return false;
     if (state.search) {
       const hay = `${r.pay_trans_id} ${r.taxpayer} ${r.primary_category} ${r.document_num || ''}`.toLowerCase();
       if (!hay.includes(state.search)) return false;
@@ -1335,6 +1479,7 @@ function getCategoryPaymentRows(feeTypeId, feeTypeDet = null) {
         if (l.account_type !== 'CREDIT') return;
         if (!lineMatchesCategory(l, feeTypeId, feeTypeDet)) return;
         if (state.group !== 'all' && l.category_group !== state.group) return;
+        if (!lineMatchesSelectedCategory(l)) return;
         const y = Number(p.budget_year);
         if (!Number.isFinite(y)) return;
         if (!byYear[y]) {
@@ -1702,6 +1847,9 @@ function renderGroupBarChart() {
     (DATA.payments_by_year || []).forEach((c) => {
       if (!rowInActiveYears(c)) return;
       if (state.group !== 'all' && c.category_group !== state.group) return;
+      if (state.category !== 'all' &&
+          (c.FEE_TYPE_NAME || '') !== state.category &&
+          (c.FEE_TYPE_SHORTNAME || '') !== state.category) return;
       const g = c.category_group || 'Other';
       groups[g] = (groups[g] || 0) + (state.usd ? c.amount_usd : c.amount_lbp);
     });
@@ -1843,6 +1991,9 @@ function getAnalysisGroupRows() {
     (DATA.payments_by_year || []).forEach((c) => {
       if (!rowInActiveYears(c)) return;
       if (state.group !== 'all' && c.category_group !== state.group) return;
+      if (state.category !== 'all' &&
+          (c.FEE_TYPE_NAME || '') !== state.category &&
+          (c.FEE_TYPE_SHORTNAME || '') !== state.category) return;
       const g = c.category_group || 'Other';
       pay[g] = (pay[g] || 0) + (u ? c.amount_usd : c.amount_lbp);
     });
@@ -2056,6 +2207,9 @@ function getYearCompareRows() {
     const payByYear = {};
     (DATA.payments_by_year || []).forEach((c) => {
       if (c.category_group !== state.group) return;
+      if (state.category !== 'all' &&
+          (c.FEE_TYPE_NAME || '') !== state.category &&
+          (c.FEE_TYPE_SHORTNAME || '') !== state.category) return;
       if (!payByYear[c.year]) payByYear[c.year] = { payments: 0, line_count: 0 };
       payByYear[c.year].payments += u ? c.amount_usd : c.amount_lbp;
       payByYear[c.year].line_count += c.line_count || 0;
@@ -2216,6 +2370,7 @@ function filterMuniPaymentsList(list) {
   return (list || []).filter((r) => {
     if (!inDateRange(r.date)) return false;
     if (state.year !== 'all' && r.budget_year !== Number(state.year)) return false;
+    if (!muniMatchesSelectedCategory(r)) return false;
     if (state.search) {
       const hay = [
         r.payment_seq_yr, r.beneficiary, r.notes, r.check_num, r.cashier, r.user_id,
