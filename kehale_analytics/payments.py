@@ -49,6 +49,13 @@ def _category_key(fee_type_id: Any, fee_type_det: Any) -> str:
     return f"{fid}:{det}" if det is not None else str(fid)
 
 
+def _clean_str(val: Any) -> str:
+    if val is None or (isinstance(val, float) and pd.isna(val)) or pd.isna(val):
+        return ""
+    text = str(val).strip()
+    return "" if text.lower() in {"", "nan", "none", "null"} else text
+
+
 def _annotate_fee_split(df: pd.DataFrame) -> pd.DataFrame:
     """Add DET_KEY / category_key columns for official (س)/(غ) rental split."""
     out = df.copy()
@@ -432,9 +439,9 @@ def _build_payment_ledger(
             "taxpayer": str(r.get("MUKALLAF_NAME") or "").strip(),
             "mukallaf_id": int(r["MUKALLAF_ID"]) if pd.notna(r.get("MUKALLAF_ID")) else None,
             "pay_trans_id": pid,
-            "collector": str(r.get("PAY_COLLECTOR") or ""),
-            "user_id": str(r.get("USERID") or r.get("USER_ID") or ""),
-            "remarks": str(r.get("RECEIPT_REMARKS") or "").strip() or None,
+            "collector": _clean_str(r.get("PAY_COLLECTOR")),
+            "user_id": _clean_str(r.get("USERID") if pd.notna(r.get("USERID")) else r.get("USER_ID")),
+            "remarks": _clean_str(r.get("RECEIPT_REMARKS")) or None,
             "category_groups": groups,
             "primary_category": top_cat,
             "line_count": len(lines),
