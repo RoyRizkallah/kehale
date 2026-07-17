@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
   <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
-  <link rel="stylesheet" href="styles.css?v=20260717m" />
+  <link rel="stylesheet" href="styles.css?v=20260717p" />
 </head>
 <body>
   <!-- Password gate -->
@@ -181,23 +181,29 @@
         </div>
       </section>
 
-      <!-- CATEGORIES (receivable fee types) -->
+      <!-- CATEGORIES: payment (expense) + receivable (income) budget lines -->
       <section class="page" id="page-categories">
+        <div class="panel-tabs" id="categories-tabs" role="tablist" aria-label="Category type">
+          <button type="button" class="panel-tab" role="tab" data-cat-tab="payments" aria-selected="false">Payments</button>
+          <button type="button" class="panel-tab active" role="tab" data-cat-tab="receivables" aria-selected="true">Receivables</button>
+        </div>
         <div class="card">
           <div class="card-head">
-            <h3>Receivable Categories</h3>
+            <h3 id="categories-title">Receivable Categories</h3>
             <div class="field field-compact">
               <label for="categories-year">Year</label>
               <select id="categories-year"><option value="all">All</option></select>
             </div>
           </div>
-          <p class="chart-hint" id="categories-hint">Fee types of money received (CREDIT split of receipts). Not municipal payment/expense categories.</p>
+          <p class="chart-hint" id="categories-hint">Official income budget sections for money received.</p>
           <div class="table-scroll"><table class="data-table" id="table-categories">
-            <thead><tr><th>ID</th><th>Category</th><th>Group</th><th class="num">Amount</th><th class="num">Lines</th><th class="col-actions"></th></tr></thead>
+            <thead id="table-categories-head">
+              <tr><th>Code</th><th>Category</th><th>Group</th><th class="num">Amount</th><th class="num">Lines</th><th class="col-actions"></th></tr>
+            </thead>
             <tbody></tbody>
           </table></div>
         </div>
-        <div class="card"><h3>Collections by Group</h3><div id="chart-group-bar" class="chart"></div></div>
+        <div class="card"><h3 id="categories-chart-title">By budget chapter</h3><div id="chart-group-bar" class="chart"></div></div>
       </section>
 
       <!-- FEE ALLOCATION ANALYSIS -->
@@ -271,6 +277,6 @@
     <div class="drawer-body" id="drawer-body"></div>
   </aside>
 
-  <script src="app.js?v=20260717n"></script>
+  <script src="app.js?v=20260717p"></script>
 </body>
 </html>

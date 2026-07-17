@@ -45,6 +45,7 @@ const state = {
   muniPage: 1,
   muniPageSize: 50,
   activePage: 'overview',
+  categoriesTab: 'receivables', // 'payments' | 'receivables'
   sortBy: 'date',
   sortDir: 'desc',
   recvSortBy: 'date',
@@ -306,13 +307,30 @@ function initFilters() {
       document.getElementById('page-' + page).classList.add('active');
       if (page === 'tracker') await ensurePayments();
       if (page === 'recv-tracker' || page === 'categories') await ensureReceivables();
-      if (page === 'muni-pay') await ensureMuniPayments();
+      if (page === 'muni-pay' || page === 'categories') await ensureMuniPayments();
       renderAll();
       if (page === 'categories') {
         setTimeout(() => renderCategoryCharts(), 150);
       } else {
         setTimeout(resizeVisibleCharts, 80);
       }
+    });
+  });
+
+  document.querySelectorAll('#categories-tabs .panel-tab').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const tab = btn.dataset.catTab;
+      if (!tab || tab === state.categoriesTab) return;
+      state.categoriesTab = tab;
+      document.querySelectorAll('#categories-tabs .panel-tab').forEach((b) => {
+        const on = b.dataset.catTab === tab;
+        b.classList.toggle('active', on);
+        b.setAttribute('aria-selected', String(on));
+      });
+      if (tab === 'payments') await ensureMuniPayments();
+      if (tab === 'receivables') await ensureReceivables();
+      await renderCategories();
+      setTimeout(() => renderCategoryCharts(), 80);
     });
   });
 
@@ -613,9 +631,12 @@ function aggregateCategoriesFromReceivables() {
           FEE_TYPE_NAME: baseName,
           FEE_TYPE_SHORTNAME: l.fee_short || meta.FEE_TYPE_SHORTNAME || baseName,
           category_group: l.category_group || 'Other',
+          budget_code: l.budget_code || null,
           amount: 0,
           lines: 0,
         };
+      } else if (!agg[key].budget_code && l.budget_code) {
+        agg[key].budget_code = l.budget_code;
       }
       agg[key].amount += u ? (l.amount_usd || 0) : (l.amount_lbp || 0);
       agg[key].lines += 1;
@@ -1529,6 +1550,125 @@ function getCategoryItems() {
   return Object.values(agg).filter((x) => x.amount > 0).sort((a, b) => b.amount - a.amount);
 }
 
+function muniCategoryKey(r) {
+  if (r.budget_code) return String(r.budget_code);
+  if (r.chapter != null && r.section != null) return `${r.chapter}.${r.section}`;
+  return r.budget_category || r.section_desc || 'other';
+}
+
+function getPaymentCategoryItems() {
+  if (!MUNI_PAYMENTS) return null;
+  const u = state.usd;
+  const agg = {};
+  filterMuniPaymentsList(MUNI_PAYMENTS).forEach((r) => {
+    const cat = r.budget_category || r.section_desc || '—';
+    const group = r.chapter_desc || 'Other';
+    if (state.group !== 'all' && group !== state.group) return;
+    if (state.search) {
+      const hay = `${cat} ${group} ${r.budget_code || ''} ${r.beneficiary || ''}`.toLowerCase();
+      if (!hay.includes(state.search)) return;
+    }
+    const key = muniCategoryKey(r);
+    if (!agg[key]) {
+      agg[key] = {
+        category_key: key,
+        budget_code: r.budget_code || key,
+        budget_category: cat,
+        category_group: group,
+        chapter: r.chapter,
+        section: r.section,
+        chapter_desc: r.chapter_desc,
+        section_desc: r.section_desc,
+        amount: 0,
+        lines: 0,
+      };
+    }
+    agg[key].amount += u ? (r.amount_usd || 0) : (r.amount_lbp || 0);
+    agg[key].lines += 1;
+  });
+  return Object.values(agg).filter((x) => x.amount > 0).sort((a, b) => b.amount - a.amount);
+}
+
+function getMuniPaymentsForCategory(categoryKey) {
+  if (!MUNI_PAYMENTS) return [];
+  return filterMuniPaymentsList(MUNI_PAYMENTS)
+    .filter((r) => muniCategoryKey(r) === categoryKey)
+    .filter((r) => state.group === 'all' || (r.chapter_desc || 'Other') === state.group)
+    .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+}
+
+function openMuniCategoryDetail(categoryKey) {
+  const rows = getMuniPaymentsForCategory(categoryKey);
+  if (!rows.length) return;
+  const u = state.usd;
+  const meta = rows[0];
+  const total = rows.reduce((s, r) => s + (u ? r.amount_usd : r.amount_lbp), 0);
+  const byYear = {};
+  rows.forEach((r) => {
+    const y = r.budget_year;
+    if (y == null) return;
+    if (!byYear[y]) byYear[y] = { year: y, amount: 0, lines: 0 };
+    byYear[y].amount += u ? (r.amount_usd || 0) : (r.amount_lbp || 0);
+    byYear[y].lines += 1;
+  });
+  const yearRows = Object.values(byYear).sort((a, b) => a.year - b.year);
+  const sample = rows.slice(0, 40);
+
+  setDrawerBack(false);
+  drawerContext = { type: 'muni-category', categoryKey };
+  document.getElementById('drawer-title').textContent = 'Payment Category Detail';
+  document.getElementById('drawer-body').innerHTML = `
+    <div class="detail-section">
+      <div class="detail-amount">${fmtMoney(total, u)}</div>
+      <div style="color:var(--muted);font-size:.85rem;margin-top:4px">${esc(meta.budget_category) || '—'} · ${rows.length.toLocaleString()} payments</div>
+    </div>
+    <div class="detail-section">
+      <h4>Budget line</h4>
+      <div class="detail-grid">
+        <div class="detail-item"><label>Code</label><span>${esc(meta.budget_code) || '—'}</span></div>
+        <div class="detail-item"><label>Chapter</label><span>${esc(meta.chapter_desc) || '—'}</span></div>
+        <div class="detail-item wide"><label>Section</label><span>${esc(meta.section_desc || meta.budget_category) || '—'}</span></div>
+      </div>
+    </div>
+    <div class="detail-section">
+      <h4>By year</h4>
+      <table class="data-table">
+        <thead><tr><th>Year</th><th class="num">Amount</th><th class="num">Payments</th></tr></thead>
+        <tbody>
+          ${yearRows.map((r) => `
+            <tr>
+              <td>${r.year}</td>
+              <td class="num">${fmtMoney(r.amount, u)}</td>
+              <td class="num">${r.lines.toLocaleString()}</td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>
+    <div class="detail-section">
+      <h4>Recent payments${rows.length > sample.length ? ` (showing ${sample.length})` : ''}</h4>
+      <table class="data-table">
+        <thead><tr><th>Date</th><th>Seq</th><th>Beneficiary</th><th class="num">Amount</th><th></th></tr></thead>
+        <tbody>
+          ${sample.map((r, i) => `
+            <tr>
+              <td>${esc(r.date) || '—'}</td>
+              <td class="num">${r.payment_seq_yr ?? '—'}</td>
+              <td>${esc(r.beneficiary) || '—'}</td>
+              <td class="num">${fmtMoney(u ? r.amount_usd : r.amount_lbp, u)}</td>
+              <td><button class="btn-link" type="button" data-action="muni-pay" data-idx="${i}">Details →</button></td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>`;
+  wireDetailButtons(document.getElementById('drawer-body'), (btn) => {
+    if (btn.dataset.action === 'muni-pay') {
+      openMuniPayDetail(sample[Number(btn.dataset.idx)]);
+      setDrawerBack(true, () => openMuniCategoryDetail(categoryKey));
+    }
+  });
+  showDrawer();
+}
+
 function renderCategoryCharts() {
   if (state.activePage !== 'categories') return;
   renderGroupBarChart();
@@ -1539,7 +1679,12 @@ function renderGroupBarChart() {
   if (!el) return;
 
   const groups = {};
-  if ((useExactDateLedgers() || dateRangeIsNarrowed()) && PAYMENTS) {
+  if (state.categoriesTab === 'payments') {
+    (getPaymentCategoryItems() || []).forEach((c) => {
+      const g = c.category_group || 'Other';
+      groups[g] = (groups[g] || 0) + (c.amount || 0);
+    });
+  } else if ((useExactDateLedgers() || dateRangeIsNarrowed()) && PAYMENTS) {
     forEachFilteredPaymentCreditLine((_, l) => {
       const g = l.category_group || 'Other';
       groups[g] = (groups[g] || 0) + (state.usd ? (l.amount_usd || 0) : (l.amount_lbp || 0));
@@ -1554,10 +1699,16 @@ function renderGroupBarChart() {
   }
   const entries = Object.entries(groups).sort((a, b) => b[1] - a[1]);
   const names = entries.map((e) => e[0]);
+  const emptyMsg = state.categoriesTab === 'payments'
+    ? 'No payment categories for current filters'
+    : 'No collection data for current filters';
+  const yTitle = state.categoriesTab === 'payments'
+    ? (state.usd ? 'USD paid out' : 'LBP paid out')
+    : (state.usd ? 'USD collected' : 'LBP collected');
 
   if (!names.length) {
     try { Plotly.purge(el); } catch (_) { /* noop */ }
-    el.innerHTML = '<p class="chart-empty">No collection data for current filters</p>';
+    el.innerHTML = `<p class="chart-empty">${emptyMsg}</p>`;
     return;
   }
 
@@ -1570,8 +1721,8 @@ function renderGroupBarChart() {
     marker: { color: names.map((n) => GROUP_COLORS[n] || GROUP_COLORS.Other) },
     hovertemplate: '<b>%{x}</b><br>%{y:,.0f}<extra></extra>',
   }], {
-    xaxis: { type: 'category', title: 'Category group', tickangle: -12 },
-    yaxis: { title: state.usd ? 'USD collected' : 'LBP collected' },
+    xaxis: { type: 'category', title: 'Budget chapter', tickangle: -12 },
+    yaxis: { title: yTitle },
     margin: { t: 20, r: 16, b: 72, l: 56 },
   });
 
@@ -1588,27 +1739,63 @@ function categoryPeriodLabel() {
 }
 
 async function renderCategories() {
+  const titleEl = document.getElementById('categories-title');
+  const chartTitle = document.getElementById('categories-chart-title');
+  const hint = document.getElementById('categories-hint');
+  const tbody = document.querySelector('#table-categories tbody');
+  if (!tbody) return;
+
+  const isPay = state.categoriesTab === 'payments';
+  if (titleEl) titleEl.textContent = isPay ? 'Payment Categories' : 'Receivable Categories';
+  if (chartTitle) chartTitle.textContent = isPay ? 'Paid out by budget chapter' : 'Received by budget chapter';
+
+  if (isPay) {
+    if (!MUNI_PAYMENTS) {
+      if (hint) hint.innerHTML = 'Loading municipal payment categories…';
+      await ensureMuniPayments();
+    }
+    const items = getPaymentCategoryItems() || [];
+    const totalAmt = items.reduce((s, r) => s + r.amount, 0);
+    if (hint) {
+      hint.innerHTML = `Official <strong>expense</strong> budget sections · <strong>${esc(categoryPeriodLabel())}</strong> · <strong>${items.length}</strong> categories · <strong>${fmtMoney(totalAmt, state.usd)}</strong> paid out.`;
+    }
+    tbody.innerHTML = items.slice(0, 80).map((r) => `
+      <tr>
+        <td class="num">${esc(r.budget_code) || '—'}</td>
+        <td>${esc(r.budget_category) || '—'}</td>
+        <td>${badge(r.category_group)}</td>
+        <td class="num">${fmtMoney(r.amount, state.usd)}</td>
+        <td class="num">${r.lines.toLocaleString()}</td>
+        <td><button class="btn-link" type="button" data-action="muni-cat" data-cat-key="${encodeURIComponent(r.category_key)}">Details →</button></td>
+      </tr>`).join('') || '<tr><td colspan="6" style="text-align:center;padding:32px;color:var(--muted)">No payment categories match filters</td></tr>';
+
+    wireDetailButtons(tbody, (btn) => {
+      if (btn.dataset.action === 'muni-cat') {
+        openMuniCategoryDetail(decodeURIComponent(btn.dataset.catKey || ''));
+      }
+    });
+    renderCategoryCharts();
+    return;
+  }
+
   if (!RECEIVABLES) {
-    const hint = document.getElementById('categories-hint');
     if (hint) hint.innerHTML = 'Loading category lines for date filter…';
     await ensureReceivables();
   }
   const items = getCategoryItems();
   const totalAmt = items.reduce((s, r) => s + r.amount, 0);
-  const hint = document.getElementById('categories-hint');
   if (hint) {
-    hint.innerHTML = `Showing <strong>${esc(categoryPeriodLabel())}</strong> (exact date filter) · <strong>${items.length}</strong> categories · <strong>${fmtMoney(totalAmt, state.usd)}</strong> fee allocation. Use Details → for per-year split.`;
+    hint.innerHTML = `Official <strong>income</strong> budget sections · <strong>${esc(categoryPeriodLabel())}</strong> · <strong>${items.length}</strong> categories · <strong>${fmtMoney(totalAmt, state.usd)}</strong> fee allocation. Use Details → for per-year split.`;
   }
 
-  const tbody = document.querySelector('#table-categories tbody');
-  if (!tbody) return;
   tbody.innerHTML = items.slice(0, 50).map((r) => {
     const key = categoryKey(r);
     const { feeTypeId, feeTypeDet } = parseCategoryKey(key);
     const detAttr = feeTypeDet == null ? '' : ` data-fee-det="${feeTypeDet}"`;
+    const code = r.budget_code || feeTypeId;
     return `
     <tr data-fee-id="${feeTypeId}"${detAttr}>
-      <td>${feeTypeId}</td>
+      <td>${esc(code)}</td>
       <td>${esc(r.FEE_TYPE_NAME)}</td>
       <td>${badge(r.category_group)}</td>
       <td class="num">${fmtMoney(r.amount, state.usd)}</td>

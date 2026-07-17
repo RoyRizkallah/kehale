@@ -277,6 +277,33 @@ body {
 }
 .card-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 10px; }
 .card-head h3 { margin: 0; }
+
+.panel-tabs {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  margin-bottom: 14px;
+  border-radius: 12px;
+  background: rgba(232, 239, 255, 0.55);
+  border: 1px solid rgba(220, 228, 240, 0.9);
+}
+.panel-tab {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 0.88rem;
+  font-weight: 600;
+  padding: 8px 16px;
+  border-radius: 9px;
+  cursor: pointer;
+}
+.panel-tab:hover { color: var(--text); background: rgba(255, 255, 255, 0.7); }
+.panel-tab.active {
+  background: var(--surface);
+  color: var(--blue-dark);
+  box-shadow: 0 1px 3px rgba(26, 43, 74, 0.1);
+}
 .muted { color: var(--muted); font-weight: 400; }
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
 .grid-categories { align-items: stretch; }
