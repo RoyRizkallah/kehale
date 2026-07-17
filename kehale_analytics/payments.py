@@ -353,11 +353,14 @@ def _build_payment_ledger(
     rec = receipts.copy()
     rec["date"] = rec["RECEIPT_DATE"].dt.strftime("%Y-%m-%d")
     rec["RECEIPT_NUMBER"] = pd.to_numeric(rec["RECEIPT_NUMBER"], errors="coerce")
+    rec["RECEIPT_ID"] = pd.to_numeric(rec["RECEIPT_ID"], errors="coerce")
     pt = pt.copy()
     pt["DOCUMENT_NUM1"] = pd.to_numeric(pt["DOCUMENT_NUM1"], errors="coerce")
+    # MRS_PAY_TRANS.DOCUMENT_NUM1 stores RECEIPT_ID (not RECEIPT_NUMBER).
+    # DOCUMENT_NUM2 is typically the printed receipt number.
     rec = rec.merge(
         pt,
-        left_on="RECEIPT_NUMBER",
+        left_on="RECEIPT_ID",
         right_on="DOCUMENT_NUM1",
         how="left",
         suffixes=("", "_pt"),
