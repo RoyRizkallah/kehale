@@ -74,6 +74,226 @@ def _annotate_fee_split(df: pd.DataFrame) -> pd.DataFrame:
     out["DET_KEY"] = out["DET_KEY"].astype("Int64")
     return out
 
+
+def _load_fee_budget_map(data_dir: Path | None = None) -> dict[tuple[int, int], dict[str, Any]]:
+    """Official FEE_TYPE → income budget chapter/section via FEE_TANSSIB_ACCOUNT.
+
+    Prefers law-5595 codes (IS_5595=Y). Key: (FEE_TYPE_ID, FEE_TYPE_DET) with
+    DET=0 for non-split fees and 1/2 for rental (سكن / غير سكن).
+    """
+    base = data_dir or DATA_DIR
+    acct_path = base / "FEE_TANSSIB_ACCOUNT.csv"
+    desc_path = base / "FEE_TANSSIB_ACCOUNT_DESC.csv"
+    if not acct_path.exists():
+        return {}
+
+    acct = pd.read_csv(acct_path, low_memory=False)
+    if acct.empty:
+        return {}
+    acct["FEE_TYPE_ID"] = pd.to_numeric(acct.get("FEE_TYPE_ID"), errors="coerce")
+    acct["FEE_TYPE_DET"] = pd.to_numeric(acct.get("FEE_TYPE_DET"), errors="coerce").fillna(0)
+    acct["FROM_YEAR"] = pd.to_numeric(acct.get("FROM_YEAR"), errors="coerce").fillna(0)
+    acct["TILL_YEAR"] = pd.to_numeric(acct.get("TILL_YEAR"), errors="coerce")
+    detail = acct.get("FEE_DETAIL", pd.Series(dtype=str)).astype(str).str.upper()
+    is5595 = acct.get("IS_5595", pd.Series(dtype=str)).astype(str).str.upper()
+    acct = acct[(detail == "FEE") & (is5595 == "Y") & acct["FEE_TYPE_ID"].notna()].copy()
+    acct["TANSSIB"] = acct.get("TANSSIB").map(_clean_str)
+    acct = acct[acct["TANSSIB"] != ""]
+    if acct.empty:
+        return {}
+
+    # Latest applicable mapping per fee + det.
+    acct = acct.sort_values(["FEE_TYPE_ID", "FEE_TYPE_DET", "FROM_YEAR"], ascending=[True, True, False])
+    acct = acct.drop_duplicates(["FEE_TYPE_ID", "FEE_TYPE_DET"], keep="first")
+
+    desc_lu: dict[str, dict[str, Any]] = {}
+    if desc_path.exists():
+        desc = pd.read_csv(desc_path, low_memory=False)
+        if not desc.empty:
+            desc["TANSSIB_CODE"] = desc.get("TANSSIB_CODE").map(_clean_str)
+            desc["CHAPTER_CODE"] = pd.to_numeric(desc.get("CHAPTER_CODE"), errors="coerce")
+            desc["SECTION_CODE"] = pd.to_numeric(desc.get("SECTION_CODE"), errors="coerce")
+            for _, r in desc.drop_duplicates("TANSSIB_CODE").iterrows():
+                code = r.get("TANSSIB_CODE")
+                if not code:
+                    continue
+                desc_lu[code] = {
+                    "chapter": int(r["CHAPTER_CODE"]) if pd.notna(r.get("CHAPTER_CODE")) else None,
+                    "section": int(r["SECTION_CODE"]) if pd.notna(r.get("SECTION_CODE")) else None,
+                    "chapter_desc": _clean_str(r.get("CHAPTER_DESC")),
+                    "section_desc": _clean_str(r.get("SECTION_DESC")),
+                }
+
+    out: dict[tuple[int, int], dict[str, Any]] = {}
+    for _, r in acct.iterrows():
+        fid = int(r["FEE_TYPE_ID"])
+        det = int(r["FEE_TYPE_DET"])
+        code = r["TANSSIB"]
+        meta = desc_lu.get(code, {})
+        chapter = meta.get("chapter")
+        section = meta.get("section")
+        if chapter is None or section is None:
+            parts = code.split("-")
+            if len(parts) >= 2 and parts[0].isdigit() and parts[1].isdigit():
+                chapter = int(parts[0])
+                section = int(parts[1])
+        chapter_desc = meta.get("chapter_desc") or ""
+        section_desc = meta.get("section_desc") or ""
+        # Fallback labels from MBS income taxonomy when DESC row missing.
+        if (not chapter_desc or not section_desc) and chapter is not None and section is not None:
+            pass  # filled below via sections CSV if needed
+        out[(fid, det)] = {
+            "budget_code": code,
+            "chapter": chapter,
+            "section": section,
+            "chapter_desc": chapter_desc,
+            "section_desc": section_desc,
+        }
+
+    # Fill missing Arabic labels from exported MBS_CHAPTERS / MBS_SECTIONS (income).
+    chapters = base / "MBS_CHAPTERS.csv"
+    sections = base / "MBS_SECTIONS.csv"
+    ch_lu: dict[int, str] = {}
+    sec_lu: dict[tuple[int, int], str] = {}
+    if chapters.exists():
+        ch = pd.read_csv(chapters, low_memory=False)
+        ch = ch[ch.get("CHAPTER_TYPE", pd.Series(dtype=str)).astype(str).str.upper() == "I"]
+        ch["CHAPTER"] = pd.to_numeric(ch.get("CHAPTER"), errors="coerce")
+        ch["BUDGET_YEAR"] = pd.to_numeric(ch.get("BUDGET_YEAR"), errors="coerce")
+        ch = ch.sort_values("BUDGET_YEAR", ascending=False).drop_duplicates("CHAPTER")
+        for _, r in ch.iterrows():
+            if pd.notna(r.get("CHAPTER")):
+                ch_lu[int(r["CHAPTER"])] = _clean_str(r.get("DESCRIPT"))
+    if sections.exists():
+        sec = pd.read_csv(sections, low_memory=False)
+        sec = sec[sec.get("CHAPTER_TYPE", pd.Series(dtype=str)).astype(str).str.upper() == "I"]
+        sec["CHAPTER"] = pd.to_numeric(sec.get("CHAPTER"), errors="coerce")
+        sec["SECTION"] = pd.to_numeric(sec.get("SECTION"), errors="coerce")
+        sec["BUDGET_YEAR"] = pd.to_numeric(sec.get("BUDGET_YEAR"), errors="coerce")
+        sec = sec.sort_values("BUDGET_YEAR", ascending=False).drop_duplicates(["CHAPTER", "SECTION"])
+        for _, r in sec.iterrows():
+            if pd.notna(r.get("CHAPTER")) and pd.notna(r.get("SECTION")):
+                sec_lu[(int(r["CHAPTER"]), int(r["SECTION"]))] = _clean_str(r.get("DESCRIPT"))
+
+    for key, meta in out.items():
+        ch = meta.get("chapter")
+        sec = meta.get("section")
+        if not meta.get("chapter_desc") and ch in ch_lu:
+            meta["chapter_desc"] = ch_lu[ch]
+        if not meta.get("section_desc") and ch is not None and sec is not None:
+            meta["section_desc"] = sec_lu.get((ch, sec), "")
+
+    # Fees with ACCOUNT but no TANSSIB code in FEE_TANSSIB_ACCOUNT — map by official name.
+    # 31 → income 2.2 (حصة … الإسكان). 30 (رسم التعمير) has no dedicated income section;
+    # keep near construction licensing (1.11) used for related building fees.
+    _NAME_FALLBACKS: dict[int, tuple[str, int, int]] = {
+        31: ("02-02", 2, 2),
+        30: ("01-11", 1, 11),
+    }
+    for fid, (code, ch, sec) in _NAME_FALLBACKS.items():
+        if (fid, 0) in out and out[(fid, 0)].get("section_desc"):
+            continue
+        out[(fid, 0)] = {
+            "budget_code": code,
+            "chapter": ch,
+            "section": sec,
+            "chapter_desc": ch_lu.get(ch, ""),
+            "section_desc": sec_lu.get((ch, sec), ""),
+        }
+    return out
+
+
+def _lookup_fee_budget(
+    budget_map: dict[tuple[int, int], dict[str, Any]],
+    fee_type_id: Any,
+    fee_type_det: Any,
+) -> dict[str, Any] | None:
+    if not budget_map or pd.isna(fee_type_id):
+        return None
+    try:
+        fid = int(fee_type_id)
+    except (TypeError, ValueError):
+        return None
+    det = _rental_det_key(fid, fee_type_det)
+    if det is not None and (fid, det) in budget_map:
+        return budget_map[(fid, det)]
+    if (fid, 0) in budget_map:
+        return budget_map[(fid, 0)]
+    return None
+
+
+def _fee_category_fields(
+    fee_row: Any,
+    fee_type_id: Any,
+    fee_type_det: Any,
+    budget_map: dict[tuple[int, int], dict[str, Any]],
+) -> dict[str, Any]:
+    """Resolve display names + official income budget category for a fee line."""
+    base_name = str(fee_row.get("FEE_TYPE_NAME") or "") if fee_row is not None else ""
+    base_short = str(fee_row.get("FEE_TYPE_SHORTNAME") or "") if fee_row is not None else ""
+    feetp = int(fee_row.get("FEETP", 3)) if fee_row is not None and pd.notna(fee_row.get("FEETP")) else 3
+    fallback_group = FEETP_LABELS.get(feetp, "Other")
+    fee_name = _fee_display_name(base_name, fee_type_id, fee_type_det)
+    fee_short = (
+        _fee_display_name(base_short, fee_type_id, fee_type_det)
+        if _rental_det_key(fee_type_id, fee_type_det)
+        else base_short
+    )
+    bud = _lookup_fee_budget(budget_map, fee_type_id, fee_type_det)
+    if bud and (bud.get("section_desc") or bud.get("chapter_desc")):
+        section_desc = bud.get("section_desc") or fee_name
+        return {
+            "fee_name": section_desc,
+            "fee_short": section_desc,
+            "category_group": bud.get("chapter_desc") or fallback_group,
+            "budget_code": bud.get("budget_code"),
+            "chapter": bud.get("chapter"),
+            "section": bud.get("section"),
+            "chapter_desc": bud.get("chapter_desc") or "",
+            "section_desc": section_desc,
+        }
+    return {
+        "fee_name": fee_name,
+        "fee_short": fee_short or fee_name,
+        "category_group": fallback_group,
+        "budget_code": None,
+        "chapter": None,
+        "section": None,
+        "chapter_desc": "",
+        "section_desc": "",
+    }
+
+
+def _apply_budget_categories_df(
+    df: pd.DataFrame,
+    budget_map: dict[tuple[int, int], dict[str, Any]],
+) -> pd.DataFrame:
+    """Overwrite category_group / fee names with official income budget labels."""
+    out = df.copy()
+    groups: list[str] = []
+    names: list[str] = []
+    shorts: list[str] = []
+    codes: list[str | None] = []
+    for fid, det, name, short, feetp in zip(
+        out["FEE_TYPE_ID"],
+        out["FEE_TYPE_DET"],
+        out.get("FEE_TYPE_NAME", pd.Series([""] * len(out))),
+        out.get("FEE_TYPE_SHORTNAME", pd.Series([""] * len(out))),
+        out.get("FEETP", pd.Series([3] * len(out))),
+        strict=False,
+    ):
+        fee_row = {"FEE_TYPE_NAME": name, "FEE_TYPE_SHORTNAME": short, "FEETP": feetp}
+        fields = _fee_category_fields(fee_row, fid, det, budget_map)
+        groups.append(fields["category_group"])
+        names.append(fields["fee_name"])
+        shorts.append(fields["fee_short"])
+        codes.append(fields.get("budget_code"))
+    out["category_group"] = groups
+    out["FEE_TYPE_NAME"] = names
+    out["FEE_TYPE_SHORTNAME"] = shorts
+    out["budget_code"] = codes
+    return out
+
 RATES_BDL = {
     2000: 1507.5, 2001: 1507.5, 2002: 1507.5, 2003: 1507.5, 2004: 1507.5,
     2005: 1507.5, 2006: 1507.5, 2007: 1507.5, 2008: 1507.5, 2009: 1507.5,
@@ -144,6 +364,7 @@ def build_dashboard_payload(data_dir: Path | None = None) -> dict[str, Any]:
     receipts = data["receipts"]
     trans = data["transactions"]
     fees = data["fee_types"]
+    budget_map = _load_fee_budget_map(data_dir)
 
     years = sorted(
         set(receipts["BUDGET_YEAR"].dropna().astype(int))
@@ -217,17 +438,8 @@ def build_dashboard_payload(data_dir: Path | None = None) -> dict[str, Any]:
     )
     cat = cat.merge(rates_df[["year", "lbp_per_usd"]], on="year", how="left")
     cat["amount_usd"] = cat["amount_lbp"] / cat["lbp_per_usd"]
-    cat["category_group"] = cat["FEETP"].map(FEETP_LABELS).fillna("Other")
-    cat["FEE_TYPE_NAME"] = [
-        _fee_display_name(n, fid, det)
-        for n, fid, det in zip(cat["FEE_TYPE_NAME"], cat["FEE_TYPE_ID"], cat["FEE_TYPE_DET"], strict=False)
-    ]
-    cat["FEE_TYPE_SHORTNAME"] = [
-        _fee_display_name(n, fid, det) if _rental_det_key(fid, det) else n
-        for n, fid, det in zip(
-            cat["FEE_TYPE_SHORTNAME"].fillna(""), cat["FEE_TYPE_ID"], cat["FEE_TYPE_DET"], strict=False
-        )
-    ]
+    cat["FEE_TYPE_SHORTNAME"] = cat["FEE_TYPE_SHORTNAME"].fillna("")
+    cat = _apply_budget_categories_df(cat, budget_map)
     cat["category_key"] = [
         _category_key(fid, det)
         for fid, det in zip(cat["FEE_TYPE_ID"], cat["FEE_TYPE_DET"], strict=False)
@@ -268,22 +480,8 @@ def build_dashboard_payload(data_dir: Path | None = None) -> dict[str, Any]:
     )
     pay_cat = pay_cat.merge(rates_df[["year", "lbp_per_usd"]], on="year", how="left")
     pay_cat["amount_usd"] = pay_cat["amount_lbp"] / pay_cat["lbp_per_usd"]
-    pay_cat["category_group"] = pay_cat["FEETP"].map(FEETP_LABELS).fillna("Other")
-    pay_cat["FEE_TYPE_NAME"] = [
-        _fee_display_name(n, fid, det)
-        for n, fid, det in zip(
-            pay_cat["FEE_TYPE_NAME"], pay_cat["FEE_TYPE_ID"], pay_cat["FEE_TYPE_DET"], strict=False
-        )
-    ]
-    pay_cat["FEE_TYPE_SHORTNAME"] = [
-        _fee_display_name(n, fid, det) if _rental_det_key(fid, det) else n
-        for n, fid, det in zip(
-            pay_cat["FEE_TYPE_SHORTNAME"].fillna(""),
-            pay_cat["FEE_TYPE_ID"],
-            pay_cat["FEE_TYPE_DET"],
-            strict=False,
-        )
-    ]
+    pay_cat["FEE_TYPE_SHORTNAME"] = pay_cat["FEE_TYPE_SHORTNAME"].fillna("")
+    pay_cat = _apply_budget_categories_df(pay_cat, budget_map)
     pay_cat["category_key"] = [
         _category_key(fid, det)
         for fid, det in zip(pay_cat["FEE_TYPE_ID"], pay_cat["FEE_TYPE_DET"], strict=False)
@@ -326,9 +524,11 @@ def build_dashboard_payload(data_dir: Path | None = None) -> dict[str, Any]:
     )
 
     # Receipt ledger = money received (UI: Receivables). File: payments.json (legacy path).
-    receipt_ledger = _build_payment_ledger(receipts, trans, data["pay_trans"], fees, rates_df)
+    receipt_ledger = _build_payment_ledger(
+        receipts, trans, data["pay_trans"], fees, rates_df, budget_map
+    )
     fee_allocation_ledger = _build_fee_allocation_ledger(
-        trans, data["pay_trans"], fees, rates_df
+        trans, data["pay_trans"], fees, rates_df, budget_map
     )
     unlinked_receipts = sum(1 for p in receipt_ledger if not p.get("pay_trans_id"))
 
@@ -447,8 +647,10 @@ def _build_payment_ledger(
     pay_trans: pd.DataFrame,
     fees: pd.DataFrame,
     rates_df: pd.DataFrame,
+    budget_map: dict[tuple[int, int], dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     """One record per receipt with linked ledger lines for dashboard drill-down."""
+    budget_map = budget_map or {}
     pt_cols = [
         "PAY_TRANS_ID", "BUDGET_YEAR", "TRANSACTION_DATE", "MUKALLAF_NAME", "MUKALLAF_ID",
         "DOCUMENT_NUM1", "DOCUMENT_NUM2", "DOCUMENT_NUM3", "USER_ID",
@@ -484,13 +686,14 @@ def _build_payment_ledger(
         fee_name = ""
         fee_short = ""
         group = "Other"
+        budget_code = None
         if pd.notna(fid) and int(fid) in fee_lu.index:
             f = fee_lu.loc[int(fid)]
-            base_name = str(f.get("FEE_TYPE_NAME") or "")
-            base_short = str(f.get("FEE_TYPE_SHORTNAME") or "")
-            fee_name = _fee_display_name(base_name, fid, fdet)
-            fee_short = _fee_display_name(base_short, fid, fdet) if _rental_det_key(fid, fdet) else base_short
-            group = FEETP_LABELS.get(int(f.get("FEETP", 3)), "Other")
+            fields = _fee_category_fields(f, fid, fdet, budget_map)
+            fee_name = fields["fee_name"]
+            fee_short = fields["fee_short"]
+            group = fields["category_group"]
+            budget_code = fields.get("budget_code")
         yr = int(row["BUDGET_YEAR"]) if pd.notna(row.get("BUDGET_YEAR")) else None
         rate = float(rate_lu.get(yr, 1507.5)) if yr else 1507.5
         amt = float(row["AMOUNT"] or 0)
@@ -506,6 +709,7 @@ def _build_payment_ledger(
             "fee_name": fee_name,
             "fee_short": fee_short,
             "category_group": group,
+            "budget_code": budget_code,
             "description": str(row.get("TRANSACTION_DESC") or "")[:120],
         })
 
@@ -555,11 +759,13 @@ def _build_fee_allocation_ledger(
     pay_trans: pd.DataFrame,
     fees: pd.DataFrame,
     rates_df: pd.DataFrame,
+    budget_map: dict[tuple[int, int], dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     """One record per pay transaction with CREDIT fee-allocation lines.
 
     These are not assessments/AR — they split cash receipts across fee types.
     """
+    budget_map = budget_map or {}
     pt_cols = [
         "PAY_TRANS_ID", "BUDGET_YEAR", "TRANSACTION_DATE", "MUKALLAF_NAME", "MUKALLAF_ID",
         "DOCUMENT_NUM1", "DOCUMENT_NUM2", "DOCUMENT_NUM3", "USER_ID",
@@ -582,13 +788,14 @@ def _build_fee_allocation_ledger(
         fee_name = ""
         fee_short = ""
         group = "Other"
+        budget_code = None
         if pd.notna(fid) and int(fid) in fee_lu.index:
             f = fee_lu.loc[int(fid)]
-            base_name = str(f.get("FEE_TYPE_NAME") or "")
-            base_short = str(f.get("FEE_TYPE_SHORTNAME") or "")
-            fee_name = _fee_display_name(base_name, fid, fdet)
-            fee_short = _fee_display_name(base_short, fid, fdet) if _rental_det_key(fid, fdet) else base_short
-            group = FEETP_LABELS.get(int(f.get("FEETP", 3)), "Other")
+            fields = _fee_category_fields(f, fid, fdet, budget_map)
+            fee_name = fields["fee_name"]
+            fee_short = fields["fee_short"]
+            group = fields["category_group"]
+            budget_code = fields.get("budget_code")
         yr = int(row["BUDGET_YEAR"]) if pd.notna(row.get("BUDGET_YEAR")) else None
         rate = float(rate_lu.get(yr, 1507.5)) if yr else 1507.5
         amt = float(row["AMOUNT"] or 0)
@@ -604,6 +811,7 @@ def _build_fee_allocation_ledger(
             "fee_name": fee_name,
             "fee_short": fee_short,
             "category_group": group,
+            "budget_code": budget_code,
             "description": str(row.get("TRANSACTION_DESC") or "")[:120],
         })
 
