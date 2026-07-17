@@ -273,7 +273,7 @@ function initFilters() {
       state.activePage = page;
       document.getElementById('page-' + page).classList.add('active');
       if (page === 'tracker') await ensurePayments();
-      if (page === 'recv-tracker') await ensureReceivables();
+      if (page === 'recv-tracker' || page === 'categories') await ensureReceivables();
       renderAll();
       if (page === 'categories') {
         setTimeout(() => renderCategoryCharts(), 150);
@@ -394,28 +394,21 @@ function renderPaymentTableHeaders() {
   }).join('') + '<th class="col-actions"></th>';
 }
 
-/** Budget years active for category aggregates (explicit Year, else years touched by date range). */
-function activeCategoryYears() {
-  if (state.year !== 'all') return new Set([Number(state.year)]);
-  if (!DATA?.meta) return null;
+/** True when From/To is narrower than the full dataset range (needs line-level category sums). */
+function dateRangeIsNarrowed() {
+  if (!DATA?.meta) return !!(state.dateFrom || state.dateTo);
   const min = DATA.meta.date_min || '';
   const max = DATA.meta.date_max || '';
-  const from = state.dateFrom || min;
-  const to = state.dateTo || max;
-  if (!from && !to) return null;
-  if (from === min && to === max) return null;
-  const y0 = Number(String(from || min).slice(0, 4));
-  const y1 = Number(String(to || max).slice(0, 4));
-  if (!Number.isFinite(y0) || !Number.isFinite(y1)) return null;
-  const years = new Set();
-  for (let y = Math.min(y0, y1); y <= Math.max(y0, y1); y += 1) years.add(y);
-  return years;
+  if (state.dateFrom && state.dateFrom !== min) return true;
+  if (state.dateTo && state.dateTo !== max) return true;
+  return false;
 }
 
 function rowInActiveYears(row) {
-  const years = activeCategoryYears();
-  if (!years) return true;
-  return years.has(Number(row.year));
+  // Explicit Year dropdown only — do NOT expand date range into full budget years
+  // (that over-counts, e.g. all of FY2025 when From is June 2025).
+  if (state.year === 'all') return true;
+  return Number(row.year) === Number(state.year);
 }
 
 function filterCategories(rows) {
@@ -423,6 +416,88 @@ function filterCategories(rows) {
   r = r.filter(rowInActiveYears);
   if (state.group !== 'all') r = r.filter((x) => x.category_group === state.group);
   return r;
+}
+
+function lineCategoryKey(line) {
+  if (line?.category_key) return String(line.category_key);
+  const fid = line?.fee_type_id;
+  const det = line?.fee_type_det;
+  if (fid == null) return '';
+  if (Number(fid) === 1 && (Number(det) === 1 || Number(det) === 2)) return `${fid}:${det}`;
+  return String(fid);
+}
+
+function feeMetaById(feeTypeId) {
+  return (DATA.fee_types || []).find((f) => Number(f.FEE_TYPE_ID) === Number(feeTypeId)) || {};
+}
+
+/** Aggregate category amounts from receivable ledger lines in the active date/year/group filters. */
+function aggregateCategoriesFromReceivables() {
+  if (!RECEIVABLES) return null;
+  const u = state.usd;
+  const agg = {};
+  RECEIVABLES.forEach((rec) => {
+    if (!inDateRange(rec.date)) return;
+    if (state.year !== 'all' && Number(rec.budget_year) !== Number(state.year)) return;
+    (rec.lines || []).forEach((l) => {
+      if (l.fee_type_id == null) return;
+      if (state.group !== 'all' && l.category_group !== state.group) return;
+      const key = lineCategoryKey(l);
+      if (!key) return;
+      if (!agg[key]) {
+        const { feeTypeId, feeTypeDet } = parseCategoryKey(key);
+        const meta = feeMetaById(feeTypeId);
+        const baseName = l.fee_name || meta.FEE_TYPE_NAME || `Fee ${feeTypeId}`;
+        agg[key] = {
+          category_key: key,
+          FEE_TYPE_ID: feeTypeId,
+          FEE_TYPE_DET: feeTypeDet,
+          FEE_TYPE_NAME: baseName,
+          FEE_TYPE_SHORTNAME: l.fee_short || meta.FEE_TYPE_SHORTNAME || baseName,
+          category_group: l.category_group || 'Other',
+          amount: 0,
+          lines: 0,
+        };
+      }
+      agg[key].amount += u ? (l.amount_usd || 0) : (l.amount_lbp || 0);
+      agg[key].lines += 1;
+    });
+  });
+  return Object.values(agg).filter((x) => x.amount > 0).sort((a, b) => b.amount - a.amount);
+}
+
+function aggregateCategoryYearlyFromReceivables(feeTypeId, feeTypeDet = null) {
+  if (!RECEIVABLES) return [];
+  const u = state.usd;
+  const byYear = {};
+  RECEIVABLES.forEach((rec) => {
+    if (!inDateRange(rec.date)) return;
+    if (state.year !== 'all' && Number(rec.budget_year) !== Number(state.year)) return;
+    (rec.lines || []).forEach((l) => {
+      if (!lineMatchesCategory(l, feeTypeId, feeTypeDet)) return;
+      if (state.group !== 'all' && l.category_group !== state.group) return;
+      const y = Number(rec.budget_year);
+      if (!Number.isFinite(y)) return;
+      if (!byYear[y]) {
+        byYear[y] = {
+          year: y,
+          FEE_TYPE_ID: feeTypeId,
+          FEE_TYPE_DET: feeTypeDet,
+          FEE_TYPE_NAME: l.fee_name,
+          FEE_TYPE_SHORTNAME: l.fee_short,
+          category_group: l.category_group,
+          category_key: lineCategoryKey(l),
+          amount_usd: 0,
+          amount_lbp: 0,
+          line_count: 0,
+        };
+      }
+      byYear[y].amount_usd += l.amount_usd || 0;
+      byYear[y].amount_lbp += l.amount_lbp || 0;
+      byYear[y].line_count += 1;
+    });
+  });
+  return Object.values(byYear).sort((a, b) => a.year - b.year);
 }
 
 function updateFilterSummary(count, total, label = 'payments') {
@@ -443,7 +518,7 @@ function renderAll() {
     renderYearlyChart,
     renderCollectionChart,
     renderDailyChart,
-    renderCategories,
+    () => { void renderCategories().catch((err) => console.error('renderCategories', err)); },
     renderReceivables,
     renderRates,
     renderYearCompare,
@@ -1014,12 +1089,47 @@ function wireDrawerFilters({ mode, feeTypeId, feeTypeDet, year, years }) {
 }
 
 function getCategoryYearlyRows(feeTypeId, feeTypeDet = null) {
+  if (dateRangeIsNarrowed() && RECEIVABLES) {
+    return aggregateCategoryYearlyFromReceivables(feeTypeId, feeTypeDet);
+  }
   return filterCategories(DATA.categories_by_year)
     .filter((c) => rowMatchesCategory(c, feeTypeId, feeTypeDet))
     .sort((a, b) => a.year - b.year);
 }
 
 function getCategoryPaymentRows(feeTypeId, feeTypeDet = null) {
+  // When date range is narrowed, allocate collected amount from payment ledger lines.
+  if (dateRangeIsNarrowed() && PAYMENTS) {
+    const u = state.usd;
+    const byYear = {};
+    PAYMENTS.forEach((p) => {
+      if (!inDateRange(p.date)) return;
+      if (state.year !== 'all' && Number(p.budget_year) !== Number(state.year)) return;
+      (p.lines || []).forEach((l) => {
+        if (l.account_type !== 'CREDIT') return;
+        if (!lineMatchesCategory(l, feeTypeId, feeTypeDet)) return;
+        if (state.group !== 'all' && l.category_group !== state.group) return;
+        const y = Number(p.budget_year);
+        if (!Number.isFinite(y)) return;
+        if (!byYear[y]) {
+          byYear[y] = {
+            year: y,
+            FEE_TYPE_ID: feeTypeId,
+            FEE_TYPE_DET: feeTypeDet,
+            amount_usd: 0,
+            amount_lbp: 0,
+            line_count: 0,
+            category_group: l.category_group,
+            FEE_TYPE_NAME: l.fee_name,
+          };
+        }
+        byYear[y].amount_usd += l.amount_usd || 0;
+        byYear[y].amount_lbp += l.amount_lbp || 0;
+        byYear[y].line_count += 1;
+      });
+    });
+    return Object.values(byYear).sort((a, b) => a.year - b.year);
+  }
   return (DATA.payments_by_year || [])
     .filter((c) => rowMatchesCategory(c, feeTypeId, feeTypeDet))
     .filter(rowInActiveYears)
@@ -1208,6 +1318,10 @@ function renderCategoryYearPayments(feeTypeId, year, feeTypeDet = null) {
 }
 
 function getCategoryItems() {
+  if (dateRangeIsNarrowed()) {
+    const fromLedger = aggregateCategoriesFromReceivables();
+    if (fromLedger) return fromLedger;
+  }
   const cats = filterCategories(DATA.categories_by_year);
   const agg = {};
   cats.forEach((c) => {
@@ -1229,12 +1343,25 @@ function renderGroupBarChart() {
   if (!el) return;
 
   const groups = {};
-  (DATA.payments_by_year || []).forEach((c) => {
-    if (!rowInActiveYears(c)) return;
-    if (state.group !== 'all' && c.category_group !== state.group) return;
-    const g = c.category_group || 'Other';
-    groups[g] = (groups[g] || 0) + (state.usd ? c.amount_usd : c.amount_lbp);
-  });
+  if (dateRangeIsNarrowed() && PAYMENTS) {
+    PAYMENTS.forEach((p) => {
+      if (!inDateRange(p.date)) return;
+      if (state.year !== 'all' && Number(p.budget_year) !== Number(state.year)) return;
+      (p.lines || []).forEach((l) => {
+        if (l.account_type !== 'CREDIT') return;
+        if (state.group !== 'all' && l.category_group !== state.group) return;
+        const g = l.category_group || 'Other';
+        groups[g] = (groups[g] || 0) + (state.usd ? (l.amount_usd || 0) : (l.amount_lbp || 0));
+      });
+    });
+  } else {
+    (DATA.payments_by_year || []).forEach((c) => {
+      if (!rowInActiveYears(c)) return;
+      if (state.group !== 'all' && c.category_group !== state.group) return;
+      const g = c.category_group || 'Other';
+      groups[g] = (groups[g] || 0) + (state.usd ? c.amount_usd : c.amount_lbp);
+    });
+  }
   const entries = Object.entries(groups).sort((a, b) => b[1] - a[1]);
   const names = entries.map((e) => e[0]);
 
@@ -1264,19 +1391,30 @@ function renderGroupBarChart() {
 }
 
 function categoryPeriodLabel() {
-  const years = activeCategoryYears();
-  if (!years) return 'all years';
-  const list = [...years].sort((a, b) => a - b);
-  if (list.length === 1) return `FY ${list[0]}`;
-  return `FY ${list[0]}–${list[list.length - 1]}`;
+  if (dateRangeIsNarrowed()) {
+    const from = state.dateFrom || '…';
+    const to = state.dateTo || '…';
+    const yr = state.year !== 'all' ? ` · FY ${state.year}` : '';
+    return `${from} → ${to}${yr}`;
+  }
+  if (state.year !== 'all') return `FY ${state.year}`;
+  return 'all years';
 }
 
-function renderCategories() {
+async function renderCategories() {
+  if (dateRangeIsNarrowed() && !RECEIVABLES) {
+    const hint = document.getElementById('categories-hint');
+    if (hint) hint.innerHTML = 'Loading category lines for date filter…';
+    await ensureReceivables();
+  }
   const items = getCategoryItems();
   const totalAmt = items.reduce((s, r) => s + r.amount, 0);
   const hint = document.getElementById('categories-hint');
   if (hint) {
-    hint.innerHTML = `Showing <strong>${esc(categoryPeriodLabel())}</strong> · <strong>${items.length}</strong> categories · <strong>${fmtMoney(totalAmt, state.usd)}</strong>. Use Details → for per-year billed vs collected.`;
+    const basis = dateRangeIsNarrowed()
+      ? ' (by transaction date in range)'
+      : '';
+    hint.innerHTML = `Showing <strong>${esc(categoryPeriodLabel())}</strong>${basis} · <strong>${items.length}</strong> categories · <strong>${fmtMoney(totalAmt, state.usd)}</strong>. Use Details → for per-year billed vs collected.`;
   }
 
   const tbody = document.querySelector('#table-categories tbody');
