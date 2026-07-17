@@ -19,6 +19,50 @@ FEETP_LABELS = {
     4: "Taxes & Surcharges",
 }
 
+# Official payment report splits rental-value fee via FEE_TYPE_DET:
+# 1 = (س) سكني / residential, 2 = (غ) غير سكني / non-residential.
+RENTAL_FEE_TYPE_ID = 1
+RENTAL_DET_LABELS = {1: "س", 2: "غ"}
+
+
+def _rental_det_key(fee_type_id: Any, fee_type_det: Any) -> int | None:
+    """Return 1/2 for rental (س)/(غ); None = do not split."""
+    try:
+        if int(fee_type_id) != RENTAL_FEE_TYPE_ID:
+            return None
+        det = int(fee_type_det)
+    except (TypeError, ValueError):
+        return None
+    return det if det in RENTAL_DET_LABELS else None
+
+
+def _fee_display_name(base_name: str, fee_type_id: Any, fee_type_det: Any) -> str:
+    label = RENTAL_DET_LABELS.get(_rental_det_key(fee_type_id, fee_type_det) or -1)
+    if label:
+        return f"{base_name}({label})"
+    return base_name
+
+
+def _category_key(fee_type_id: Any, fee_type_det: Any) -> str:
+    det = _rental_det_key(fee_type_id, fee_type_det)
+    fid = int(fee_type_id) if pd.notna(fee_type_id) else 0
+    return f"{fid}:{det}" if det is not None else str(fid)
+
+
+def _annotate_fee_split(df: pd.DataFrame) -> pd.DataFrame:
+    """Add DET_KEY / category_key columns for official (س)/(غ) rental split."""
+    out = df.copy()
+    if "FEE_TYPE_DET" not in out.columns:
+        out["FEE_TYPE_DET"] = pd.NA
+    out["FEE_TYPE_DET"] = pd.to_numeric(out["FEE_TYPE_DET"], errors="coerce")
+    out["DET_KEY"] = [
+        _rental_det_key(fid, det)
+        for fid, det in zip(out["FEE_TYPE_ID"], out["FEE_TYPE_DET"], strict=False)
+    ]
+    # Non-split rows share one bucket (NaN) so they stay a single category.
+    out["DET_KEY"] = out["DET_KEY"].astype("Int64")
+    return out
+
 RATES_BDL = {
     2000: 1507.5, 2001: 1507.5, 2002: 1507.5, 2003: 1507.5, 2004: 1507.5,
     2005: 1507.5, 2006: 1507.5, 2007: 1507.5, 2008: 1507.5, 2009: 1507.5,
@@ -61,6 +105,7 @@ def load_payment_data(data_dir: Path | None = None) -> dict[str, pd.DataFrame]:
     trans["PAY_TRANS_ID"] = pd.to_numeric(trans["PAY_TRANS_ID"], errors="coerce")
     trans["AMOUNT"] = pd.to_numeric(trans["AMOUNT"], errors="coerce").fillna(0)
     trans["FEE_TYPE_ID"] = pd.to_numeric(trans["FEE_TYPE_ID"], errors="coerce")
+    trans["FEE_TYPE_DET"] = pd.to_numeric(trans.get("FEE_TYPE_DET"), errors="coerce")
 
     pay_trans = _load_pay_trans(base)
     merged = trans.merge(
@@ -130,11 +175,12 @@ def build_dashboard_payload(data_dir: Path | None = None) -> dict[str, Any]:
         (yearly["payments_lbp"] / yearly["receivables_lbp"].replace(0, pd.NA)) * 100
     ).round(2)
 
-    # Category breakdown (CREDIT = receivables by fee type)
+    # Category breakdown (CREDIT = receivables by fee type), with rental (س)/(غ) split
+    credit = _annotate_fee_split(credit)
     cat = (
-        credit.groupby(["BUDGET_YEAR", "FEE_TYPE_ID"], as_index=False)
+        credit.groupby(["BUDGET_YEAR", "FEE_TYPE_ID", "DET_KEY"], as_index=False, dropna=False)
         .agg(amount_lbp=("AMOUNT", "sum"), line_count=("AMOUNT", "count"))
-        .rename(columns={"BUDGET_YEAR": "year"})
+        .rename(columns={"BUDGET_YEAR": "year", "DET_KEY": "FEE_TYPE_DET"})
     )
     cat["year"] = cat["year"].astype(int)
     cat = cat.merge(
@@ -154,6 +200,20 @@ def build_dashboard_payload(data_dir: Path | None = None) -> dict[str, Any]:
     cat = cat.merge(rates_df[["year", "lbp_per_usd"]], on="year", how="left")
     cat["amount_usd"] = cat["amount_lbp"] / cat["lbp_per_usd"]
     cat["category_group"] = cat["FEETP"].map(FEETP_LABELS).fillna("Other")
+    cat["FEE_TYPE_NAME"] = [
+        _fee_display_name(n, fid, det)
+        for n, fid, det in zip(cat["FEE_TYPE_NAME"], cat["FEE_TYPE_ID"], cat["FEE_TYPE_DET"], strict=False)
+    ]
+    cat["FEE_TYPE_SHORTNAME"] = [
+        _fee_display_name(n, fid, det) if _rental_det_key(fid, det) else n
+        for n, fid, det in zip(
+            cat["FEE_TYPE_SHORTNAME"].fillna(""), cat["FEE_TYPE_ID"], cat["FEE_TYPE_DET"], strict=False
+        )
+    ]
+    cat["category_key"] = [
+        _category_key(fid, det)
+        for fid, det in zip(cat["FEE_TYPE_ID"], cat["FEE_TYPE_DET"], strict=False)
+    ]
 
     # Payments allocated to categories (DEBIT total split across CREDIT fee lines)
     debit = trans[trans["ACCOUNT_TYPE"] == "DEBIT"].groupby("PAY_TRANS_ID", as_index=False).agg(
@@ -169,9 +229,9 @@ def build_dashboard_payload(data_dir: Path | None = None) -> dict[str, Any]:
         credit_lines["AMOUNT"] / credit_lines["credit_total"].replace(0, pd.NA)
     ) * credit_lines["paid_lbp"]
     pay_cat = (
-        credit_lines.groupby(["BUDGET_YEAR", "FEE_TYPE_ID"], as_index=False)
+        credit_lines.groupby(["BUDGET_YEAR", "FEE_TYPE_ID", "DET_KEY"], as_index=False, dropna=False)
         .agg(amount_lbp=("paid_share", "sum"), line_count=("paid_share", "count"))
-        .rename(columns={"BUDGET_YEAR": "year"})
+        .rename(columns={"BUDGET_YEAR": "year", "DET_KEY": "FEE_TYPE_DET"})
     )
     pay_cat["year"] = pay_cat["year"].astype(int)
     pay_cat = pay_cat.merge(
@@ -191,6 +251,25 @@ def build_dashboard_payload(data_dir: Path | None = None) -> dict[str, Any]:
     pay_cat = pay_cat.merge(rates_df[["year", "lbp_per_usd"]], on="year", how="left")
     pay_cat["amount_usd"] = pay_cat["amount_lbp"] / pay_cat["lbp_per_usd"]
     pay_cat["category_group"] = pay_cat["FEETP"].map(FEETP_LABELS).fillna("Other")
+    pay_cat["FEE_TYPE_NAME"] = [
+        _fee_display_name(n, fid, det)
+        for n, fid, det in zip(
+            pay_cat["FEE_TYPE_NAME"], pay_cat["FEE_TYPE_ID"], pay_cat["FEE_TYPE_DET"], strict=False
+        )
+    ]
+    pay_cat["FEE_TYPE_SHORTNAME"] = [
+        _fee_display_name(n, fid, det) if _rental_det_key(fid, det) else n
+        for n, fid, det in zip(
+            pay_cat["FEE_TYPE_SHORTNAME"].fillna(""),
+            pay_cat["FEE_TYPE_ID"],
+            pay_cat["FEE_TYPE_DET"],
+            strict=False,
+        )
+    ]
+    pay_cat["category_key"] = [
+        _category_key(fid, det)
+        for fid, det in zip(pay_cat["FEE_TYPE_ID"], pay_cat["FEE_TYPE_DET"], strict=False)
+    ]
 
     # Monthly payment flow
     receipts_m = receipts.dropna(subset=["RECEIPT_DATE"]).copy()
@@ -207,8 +286,16 @@ def build_dashboard_payload(data_dir: Path | None = None) -> dict[str, Any]:
     # Category map nodes (all-time + per year totals for treemap)
     cat_totals = (
         cat.groupby(
-            ["FEE_TYPE_ID", "FEE_TYPE_NAME", "FEE_TYPE_SHORTNAME", "category_group"],
+            [
+                "category_key",
+                "FEE_TYPE_ID",
+                "FEE_TYPE_DET",
+                "FEE_TYPE_NAME",
+                "FEE_TYPE_SHORTNAME",
+                "category_group",
+            ],
             as_index=False,
+            dropna=False,
         )
         .agg(total_lbp=("amount_lbp", "sum"), total_usd=("amount_usd", "sum"))
         .sort_values("total_usd", ascending=False)
@@ -285,23 +372,29 @@ def _build_payment_ledger(
         if pid is None:
             continue
         fid = row.get("FEE_TYPE_ID")
+        fdet = row.get("FEE_TYPE_DET")
         fee_name = ""
         fee_short = ""
         group = "Other"
         if pd.notna(fid) and int(fid) in fee_lu.index:
             f = fee_lu.loc[int(fid)]
-            fee_name = str(f.get("FEE_TYPE_NAME") or "")
-            fee_short = str(f.get("FEE_TYPE_SHORTNAME") or "")
+            base_name = str(f.get("FEE_TYPE_NAME") or "")
+            base_short = str(f.get("FEE_TYPE_SHORTNAME") or "")
+            fee_name = _fee_display_name(base_name, fid, fdet)
+            fee_short = _fee_display_name(base_short, fid, fdet) if _rental_det_key(fid, fdet) else base_short
             group = FEETP_LABELS.get(int(f.get("FEETP", 3)), "Other")
         yr = int(row["BUDGET_YEAR"]) if pd.notna(row.get("BUDGET_YEAR")) else None
         rate = float(rate_lu.get(yr, 1507.5)) if yr else 1507.5
         amt = float(row["AMOUNT"] or 0)
+        det_key = _rental_det_key(fid, fdet)
         lines_by_pt.setdefault(pid, []).append({
             "seq": int(row["TRANSACTION_SEQ"]) if pd.notna(row.get("TRANSACTION_SEQ")) else None,
             "account_type": str(row["ACCOUNT_TYPE"]),
             "amount_lbp": round(amt, 2),
             "amount_usd": round(amt / rate, 2),
             "fee_type_id": int(fid) if pd.notna(fid) else None,
+            "fee_type_det": det_key,
+            "category_key": _category_key(fid, fdet) if pd.notna(fid) else None,
             "fee_name": fee_name,
             "fee_short": fee_short,
             "category_group": group,
@@ -374,23 +467,29 @@ def _build_receivable_ledger(
         if pid is None:
             continue
         fid = row.get("FEE_TYPE_ID")
+        fdet = row.get("FEE_TYPE_DET")
         fee_name = ""
         fee_short = ""
         group = "Other"
         if pd.notna(fid) and int(fid) in fee_lu.index:
             f = fee_lu.loc[int(fid)]
-            fee_name = str(f.get("FEE_TYPE_NAME") or "")
-            fee_short = str(f.get("FEE_TYPE_SHORTNAME") or "")
+            base_name = str(f.get("FEE_TYPE_NAME") or "")
+            base_short = str(f.get("FEE_TYPE_SHORTNAME") or "")
+            fee_name = _fee_display_name(base_name, fid, fdet)
+            fee_short = _fee_display_name(base_short, fid, fdet) if _rental_det_key(fid, fdet) else base_short
             group = FEETP_LABELS.get(int(f.get("FEETP", 3)), "Other")
         yr = int(row["BUDGET_YEAR"]) if pd.notna(row.get("BUDGET_YEAR")) else None
         rate = float(rate_lu.get(yr, 1507.5)) if yr else 1507.5
         amt = float(row["AMOUNT"] or 0)
+        det_key = _rental_det_key(fid, fdet)
         lines_by_pt.setdefault(pid, []).append({
             "seq": int(row["TRANSACTION_SEQ"]) if pd.notna(row.get("TRANSACTION_SEQ")) else None,
             "account_type": "CREDIT",
             "amount_lbp": round(amt, 2),
             "amount_usd": round(amt / rate, 2),
             "fee_type_id": int(fid) if pd.notna(fid) else None,
+            "fee_type_det": det_key,
+            "category_key": _category_key(fid, fdet) if pd.notna(fid) else None,
             "fee_name": fee_name,
             "fee_short": fee_short,
             "category_group": group,

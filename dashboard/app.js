@@ -961,35 +961,73 @@ function drawerFiltersHtml(years, mode) {
   </div>`;
 }
 
-function wireDrawerFilters({ mode, feeTypeId, year, years }) {
+function categoryKey(c) {
+  if (c?.category_key) return String(c.category_key);
+  const fid = c?.FEE_TYPE_ID;
+  const det = c?.FEE_TYPE_DET;
+  if (fid == null) return '';
+  return det == null || det === '' ? String(fid) : `${fid}:${det}`;
+}
+
+function parseCategoryKey(key) {
+  const s = String(key ?? '');
+  if (s.includes(':')) {
+    const [fid, det] = s.split(':');
+    return { feeTypeId: Number(fid), feeTypeDet: Number(det) };
+  }
+  return { feeTypeId: Number(s), feeTypeDet: null };
+}
+
+function lineMatchesCategory(line, feeTypeId, feeTypeDet) {
+  if (Number(line.fee_type_id) !== Number(feeTypeId)) return false;
+  if (feeTypeDet == null || Number.isNaN(Number(feeTypeDet))) {
+    // Unsplit category: exclude rental lines that belong to (س)/(غ) buckets.
+    if (Number(feeTypeId) === 1) {
+      const d = line.fee_type_det;
+      return d == null || d === '' || Number(d) === 0 || Number.isNaN(Number(d));
+    }
+    return true;
+  }
+  return Number(line.fee_type_det) === Number(feeTypeDet);
+}
+
+function rowMatchesCategory(c, feeTypeId, feeTypeDet) {
+  if (Number(c.FEE_TYPE_ID) !== Number(feeTypeId)) return false;
+  if (feeTypeDet == null || Number.isNaN(Number(feeTypeDet))) {
+    return c.FEE_TYPE_DET == null || c.FEE_TYPE_DET === '' || Number.isNaN(Number(c.FEE_TYPE_DET));
+  }
+  return Number(c.FEE_TYPE_DET) === Number(feeTypeDet);
+}
+
+function wireDrawerFilters({ mode, feeTypeId, feeTypeDet, year, years }) {
   const bar = document.getElementById('drawer-filters');
   if (!bar) return;
   bar.querySelector('.drawer-search')?.addEventListener('input', debounce((e) => {
     drawerLocal.search = e.target.value.trim().toLowerCase();
-    if (mode === 'years') openCategoryDetail(feeTypeId, true);
-    else renderCategoryYearPayments(feeTypeId, year);
+    if (mode === 'years') openCategoryDetail(feeTypeId, true, feeTypeDet);
+    else renderCategoryYearPayments(feeTypeId, year, feeTypeDet);
   }, 200));
   bar.querySelector('.drawer-year')?.addEventListener('change', (e) => {
     drawerLocal.filterYear = e.target.value;
-    openCategoryDetail(feeTypeId, true);
+    openCategoryDetail(feeTypeId, true, feeTypeDet);
   });
 }
 
-function getCategoryYearlyRows(feeTypeId) {
+function getCategoryYearlyRows(feeTypeId, feeTypeDet = null) {
   return filterCategories(DATA.categories_by_year)
-    .filter((c) => c.FEE_TYPE_ID === feeTypeId)
+    .filter((c) => rowMatchesCategory(c, feeTypeId, feeTypeDet))
     .sort((a, b) => a.year - b.year);
 }
 
-function getCategoryPaymentRows(feeTypeId) {
+function getCategoryPaymentRows(feeTypeId, feeTypeDet = null) {
   return (DATA.payments_by_year || [])
-    .filter((c) => c.FEE_TYPE_ID === feeTypeId)
+    .filter((c) => rowMatchesCategory(c, feeTypeId, feeTypeDet))
     .filter(rowInActiveYears)
     .filter((c) => state.group === 'all' || c.category_group === state.group)
     .sort((a, b) => a.year - b.year);
 }
 
-function getPaymentsForCategoryYear(feeTypeId, year) {
+function getPaymentsForCategoryYear(feeTypeId, year, feeTypeDet = null) {
   if (!PAYMENTS) return [];
   const u = state.usd;
   return PAYMENTS.filter((p) => {
@@ -999,24 +1037,24 @@ function getPaymentsForCategoryYear(feeTypeId, year) {
       const hay = `${p.receipt_number} ${p.taxpayer} ${p.primary_category}`.toLowerCase();
       if (!hay.includes(state.search)) return false;
     }
-    return (p.lines || []).some((l) => l.fee_type_id === feeTypeId && l.account_type === 'CREDIT');
+    return (p.lines || []).some((l) => l.account_type === 'CREDIT' && lineMatchesCategory(l, feeTypeId, feeTypeDet));
   }).map((p) => {
-    const credits = (p.lines || []).filter((l) => l.fee_type_id === feeTypeId && l.account_type === 'CREDIT');
+    const credits = (p.lines || []).filter((l) => l.account_type === 'CREDIT' && lineMatchesCategory(l, feeTypeId, feeTypeDet));
     const categoryAmount = credits.reduce((s, l) => s + (u ? l.amount_usd : l.amount_lbp), 0);
     return { ...p, category_amount: categoryAmount };
   }).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
 }
 
-function openCategoryDetail(feeTypeId, keepFilters = false) {
+function openCategoryDetail(feeTypeId, keepFilters = false, feeTypeDet = null) {
   const u = state.usd;
-  const recvRows = getCategoryYearlyRows(feeTypeId);
+  const recvRows = getCategoryYearlyRows(feeTypeId, feeTypeDet);
   if (!recvRows.length) return;
 
   if (!keepFilters) resetDrawerLocal();
 
   const meta = recvRows[0];
   const feeMeta = (DATA.fee_types || []).find((f) => Number(f.FEE_TYPE_ID) === feeTypeId) || {};
-  const payRows = getCategoryPaymentRows(feeTypeId);
+  const payRows = getCategoryPaymentRows(feeTypeId, feeTypeDet);
 
   const yearMap = {};
   recvRows.forEach((r) => {
@@ -1046,7 +1084,7 @@ function openCategoryDetail(feeTypeId, keepFilters = false) {
   const rate = totalRecv ? (totalPay / totalRecv) * 100 : 0;
   const allYears = Object.keys(yearMap).map(Number).sort((a, b) => a - b);
 
-  drawerContext = { type: 'category', feeTypeId };
+  drawerContext = { type: 'category', feeTypeId, feeTypeDet };
   setDrawerBack(false);
   document.getElementById('drawer-title').textContent = 'Category · By Year';
   document.getElementById('drawer-body').innerHTML = `
@@ -1084,9 +1122,9 @@ function openCategoryDetail(feeTypeId, keepFilters = false) {
       </table>
     </div>`;
 
-  wireDrawerFilters({ mode: 'years', feeTypeId, years: allYears });
+  wireDrawerFilters({ mode: 'years', feeTypeId, feeTypeDet, years: allYears });
   wireDetailButtons(document.getElementById('drawer-body'), (btn) => {
-    if (btn.dataset.action === 'year') openCategoryYearDetail(feeTypeId, Number(btn.dataset.year));
+    if (btn.dataset.action === 'year') openCategoryYearDetail(feeTypeId, Number(btn.dataset.year), feeTypeDet);
   });
 
   showDrawer();
@@ -1094,25 +1132,27 @@ function openCategoryDetail(feeTypeId, keepFilters = false) {
 
 let categoryYearPayments = [];
 
-async function openCategoryYearDetail(feeTypeId, year) {
+async function openCategoryYearDetail(feeTypeId, year, feeTypeDet = null) {
   drawerLocal.search = '';
-  drawerContext = { type: 'category-year', feeTypeId, year };
-  setDrawerBack(true, () => openCategoryDetail(feeTypeId, true));
+  drawerContext = { type: 'category-year', feeTypeId, feeTypeDet, year };
+  setDrawerBack(true, () => openCategoryDetail(feeTypeId, true, feeTypeDet));
   document.getElementById('drawer-title').textContent = `${year} · loading…`;
   document.getElementById('drawer-body').innerHTML = '<p style="color:var(--muted);padding:20px 0">Loading payments…</p>';
   showDrawer();
 
   await ensurePayments();
-  categoryYearPayments = getPaymentsForCategoryYear(feeTypeId, year);
-  const meta = getCategoryYearlyRows(feeTypeId).find((r) => r.year === year) || getCategoryYearlyRows(feeTypeId)[0] || {};
+  categoryYearPayments = getPaymentsForCategoryYear(feeTypeId, year, feeTypeDet);
+  const meta = getCategoryYearlyRows(feeTypeId, feeTypeDet).find((r) => r.year === year)
+    || getCategoryYearlyRows(feeTypeId, feeTypeDet)[0]
+    || {};
   document.getElementById('drawer-title').textContent = `${year} · ${esc(meta.FEE_TYPE_SHORTNAME || meta.FEE_TYPE_NAME || `Fee ${feeTypeId}`)}`;
-  renderCategoryYearPayments(feeTypeId, year);
+  renderCategoryYearPayments(feeTypeId, year, feeTypeDet);
 }
 
-function renderCategoryYearPayments(feeTypeId, year) {
+function renderCategoryYearPayments(feeTypeId, year, feeTypeDet = null) {
   const u = state.usd;
-  const recvRow = getCategoryYearlyRows(feeTypeId).find((r) => r.year === year);
-  const payRow = getCategoryPaymentRows(feeTypeId).find((r) => r.year === year);
+  const recvRow = getCategoryYearlyRows(feeTypeId, feeTypeDet).find((r) => r.year === year);
+  const payRow = getCategoryPaymentRows(feeTypeId, feeTypeDet).find((r) => r.year === year);
 
   let payments = categoryYearPayments;
   if (drawerLocal.search) {
@@ -1158,7 +1198,7 @@ function renderCategoryYearPayments(feeTypeId, year) {
       </table>
     </div>`;
 
-  wireDrawerFilters({ mode: 'payments', feeTypeId, year });
+  wireDrawerFilters({ mode: 'payments', feeTypeId, feeTypeDet, year });
   wireDetailButtons(document.getElementById('drawer-body'), (btn) => {
     if (btn.dataset.action === 'receipt') {
       const p = categoryYearPayments.find((x) => String(x.receipt_id) === btn.dataset.receiptId);
@@ -1171,8 +1211,8 @@ function getCategoryItems() {
   const cats = filterCategories(DATA.categories_by_year);
   const agg = {};
   cats.forEach((c) => {
-    const k = c.FEE_TYPE_ID;
-    if (!agg[k]) agg[k] = { ...c, amount: 0, lines: 0 };
+    const k = categoryKey(c);
+    if (!agg[k]) agg[k] = { ...c, category_key: k, amount: 0, lines: 0 };
     agg[k].amount += state.usd ? c.amount_usd : c.amount_lbp;
     agg[k].lines += c.line_count || 0;
   });
@@ -1241,17 +1281,25 @@ function renderCategories() {
 
   const tbody = document.querySelector('#table-categories tbody');
   if (!tbody) return;
-  tbody.innerHTML = items.slice(0, 50).map((r) => `
-    <tr data-fee-id="${r.FEE_TYPE_ID}">
-      <td>${r.FEE_TYPE_ID}</td>
+  tbody.innerHTML = items.slice(0, 50).map((r) => {
+    const key = categoryKey(r);
+    const { feeTypeId, feeTypeDet } = parseCategoryKey(key);
+    const detAttr = feeTypeDet == null ? '' : ` data-fee-det="${feeTypeDet}"`;
+    return `
+    <tr data-fee-id="${feeTypeId}"${detAttr}>
+      <td>${feeTypeId}</td>
       <td>${esc(r.FEE_TYPE_NAME)}</td>
       <td>${badge(r.category_group)}</td>
       <td class="num">${fmtMoney(r.amount, state.usd)}</td>
       <td class="num">${r.lines.toLocaleString()}</td>
-      <td><button class="btn-link" type="button" data-action="detail" data-fee-id="${r.FEE_TYPE_ID}">Details →</button></td>
-    </tr>`).join('') || '<tr><td colspan="6" style="text-align:center;padding:32px;color:var(--muted)">No categories match filters</td></tr>';
+      <td><button class="btn-link" type="button" data-action="detail" data-fee-id="${feeTypeId}"${detAttr}>Details →</button></td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="6" style="text-align:center;padding:32px;color:var(--muted)">No categories match filters</td></tr>';
 
-  wireDetailButtons(tbody, (btn) => openCategoryDetail(Number(btn.dataset.feeId)));
+  wireDetailButtons(tbody, (btn) => {
+    const det = btn.dataset.feeDet;
+    openCategoryDetail(Number(btn.dataset.feeId), false, det == null || det === '' ? null : Number(det));
+  });
 
   renderCategoryCharts();
 }
@@ -1340,8 +1388,8 @@ function renderReceivables() {
   const cats = filterCategories(DATA.categories_by_year);
   const agg = {};
   cats.forEach((c) => {
-    const k = c.FEE_TYPE_ID;
-    if (!agg[k]) agg[k] = { name: (c.FEE_TYPE_SHORTNAME || c.FEE_TYPE_NAME || '').slice(0, 40), val: 0 };
+    const k = categoryKey(c);
+    if (!agg[k]) agg[k] = { name: (c.FEE_TYPE_NAME || c.FEE_TYPE_SHORTNAME || '').slice(0, 40), val: 0 };
     agg[k].val += u ? c.amount_usd : c.amount_lbp;
   });
   const top = Object.values(agg).sort((a, b) => b.val - a.val).slice(0, 15);
